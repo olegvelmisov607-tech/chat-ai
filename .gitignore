@@ -44,3 +44,6 @@ coverage/
 .cache/
 .temp/
 .tmp/
+
+# Local config with secrets
+gigacode.json
