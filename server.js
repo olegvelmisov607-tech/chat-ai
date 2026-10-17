@@ -16,6 +16,17 @@ const MIME_TYPES = {
 };
 
 const server = http.createServer(async (req, res) => {
+  // CORS заголовки
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+  if (req.method === 'OPTIONS') {
+    res.writeHead(204);
+    res.end();
+    return;
+  }
+
   if (req.url === '/api/chat' && req.method === 'POST') {
     let body = '';
     req.on('data', chunk => { body += chunk; });
@@ -54,13 +65,13 @@ const server = http.createServer(async (req, res) => {
             try {
               const parsed = JSON.parse(line);
               res.write(`data: ${JSON.stringify({ response: parsed.response, done: parsed.done })}\n\n`);
-            } catch {
+            } catch (e) {
               // Игнорируем неполные чанки
             }
           }
         }
         res.end();
-      } catch {
+      } catch (error) {
         res.writeHead(500, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: 'Ошибка сервера или Ollama не запущена' }));
       }

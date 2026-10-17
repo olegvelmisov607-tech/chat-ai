@@ -60,6 +60,7 @@ body {
 .model-selector-wrapper {
   display: flex;
   align-items: center;
+  gap: 8px;
 }
 
 .model-selector-wrapper select {
@@ -116,30 +117,54 @@ main#app {
   margin-bottom: 15px;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  align-items: flex-start; /* Наше главное лекарство: ИИ прижимается влево */
+  gap: 16px;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
 }
 
+/* Общий базовый стиль для пузыря сообщения */
 .message {
   padding: 12px 16px;
   border-radius: var(--radius-lg);
-  max-width: 75%;
+  width: auto;
+  max-width: 75%; /* Пузырь больше не растягивается в узкую полосу */
   line-height: 1.5;
   font-size: 15px;
   word-break: break-word;
   box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+  display: flex;
+  flex-direction: column; /* Текст автора и контент ложатся строго друг под друга */
+  gap: 4px;
+}
+
+/* Класс автора (если генерируется скриптом внутри .message) */
+.message-author {
+  font-weight: 700;
+  font-size: 0.85em;
+  margin-bottom: 2px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
 .user {
   background-color: var(--user-msg-bg);
-  align-self: flex-end;
+  align-self: flex-end; /* Пользовательские сообщения прижимаются вправо */
   border-bottom-right-radius: 2px;
+}
+
+.user .message-author {
+  color: var(--primary-dark);
+  align-self: flex-end;
 }
 
 .ai {
   background-color: var(--ai-msg-bg);
-  align-self: flex-start;
+  align-self: flex-start; /* ИИ сообщения прижимаются влево */
   border-bottom-left-radius: 2px;
+}
+
+.ai .message-author {
+  color: #c0392b; /* Выделим имя ИИ приятным бордовым тоном */
 }
 
 .thought {
@@ -242,6 +267,7 @@ main#app {
   .messages-container {
     padding: 10px;
     border-radius: 8px;
+    gap: 12px;
   }
   .message {
     max-width: 88%;
