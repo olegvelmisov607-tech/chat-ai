@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Local AI Chat</title>
+  <meta name="theme-color" content="#2b5278">
+</head>
+<body>
+
+  <nav class="navbar">
+    <div class="nav-links">
+      <a href="#chat" class="nav-link">Чат</a>
+      <a href="#settings" class="nav-link">Настройки</a>
+    </div>
+    <div class="model-selector-wrapper">
+      <label for="model-select" style="color: white; margin-right: 5px;">Модель:</label>
+      <select id="model-select">
+        <option value="qwen">Qwen</option>
+        <option value="deepseek-r1">DeepSeek (Reasoning)</option>
+      </select>
+    </div>
+  </nav>
+
+  <main id="app">
+    <section id="screen-chat" class="screen active">
+      <div id="chat-messages" class="messages-container"></div>
+      <form id="chat-form" class="chat-input-area">
+        <input type="text" id="user-input" placeholder="Введите сообщение..." required autocomplete="off">
+        <button type="submit">Отправить</button>
+      </form>
+    </section>
+
+    <section id="screen-settings" class="screen">
+      <h1>Настройки PWA</h1>
+      <p>Локальные модели управляются через <strong>Ollama</strong>.</p>
+      <button id="install-btn" style="display: none;">Установить как приложение</button>
+    </section>
+  </main>
+
+</body>
+</html>

@@ -1,0 +1,17 @@
+{
+  "short_name": "AI-Chat",
+  "name": "Local AI PWA Chat Client",
+  "icons": [
+    {
+      "src": "https://cdn-icons-png.flaticon.com/512/1698/1698535.png",
+      "type": "image/png",
+      "sizes": "512x512",
+      "purpose": "any maskable"
+    }
+  ],
+  "start_url": "/",
+  "background_color": "#2b5278",
+  "theme-color": "#2b5278",
+  "display": "standalone",
+  "orientation": "portrait"
+}
