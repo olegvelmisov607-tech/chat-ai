@@ -36,9 +36,15 @@ export default {
         { from: 'src/sw.js', to: 'sw.js' },
       ],
     }),
+  
     new ESLintPlugin({
       extensions: ['js'],
       fix: true,
+      // ДОБАВЛЯЕМ ЭТИ ДВЕ СТРОКИ:
+      context: path.resolve(__dirname, 'src'), // Где искать файлы
+      configType: 'flat', // Говорим плагину, что у нас Flat Config
+      overrideConfigFile: path.resolve(__dirname, 'eslint.config.js'), // Путь к конфигу
     }),
+
   ],
 };

@@ -30,7 +30,7 @@ function formatAIResponse(text) {
   if (!text) return '';
   let formatted = text;
   if (formatted.includes('<think>') && !formatted.includes('</think>')) {
-    formatted = formatted.replace(/<think>/g, '<span class="thought"><strong>Рассуждение:</strong><br>') + '</span>';
+    formatted = `${formatted.replace(/<think>/g, '<span class="thought"><strong>Рассуждение:</strong><br>')}</span>`;
   } else {
     formatted = formatted
       .replace(/<think>/g, '<span class="thought"><strong>Рассуждение:</strong><br>')
@@ -41,10 +41,10 @@ function formatAIResponse(text) {
 
 function createMessageElement(sender, className) {
   const messageElement = document.createElement('div');
-  messageElement.className = `message \${className}`;
+  messageElement.className = `message ${className}`;
   
   const label = document.createElement('strong');
-  label.textContent = `\${sender}: `;
+  label.textContent = `${sender}: `;
   messageElement.appendChild(label);
 
   const textSpan = document.createElement('span');
@@ -108,7 +108,7 @@ chatForm.addEventListener('submit', async (e) => {
             aiTextSpan.innerHTML = formatAIResponse(fullAIResponse);
             chatMessages.scrollTop = chatMessages.scrollHeight;
           }
-        } catch (err) {
+        } catch {
           // Игнорируем ошибки парсинга
         }
       }
@@ -116,7 +116,7 @@ chatForm.addEventListener('submit', async (e) => {
 
     await saveMessage(dbInstance, { sender: aiName, text: fullAIResponse, className: 'ai' });
 
-  } catch (err) {
+  } catch {
     aiTextSpan.textContent = 'Ошибка соединения с сервером.';
   }
 });

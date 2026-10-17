@@ -54,13 +54,13 @@ const server = http.createServer(async (req, res) => {
             try {
               const parsed = JSON.parse(line);
               res.write(`data: ${JSON.stringify({ response: parsed.response, done: parsed.done })}\n\n`);
-            } catch (e) {
+            } catch {
               // Игнорируем неполные чанки
             }
           }
         }
         res.end();
-      } catch (error) {
+      } catch {
         res.writeHead(500, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: 'Ошибка сервера или Ollama не запущена' }));
       }
@@ -84,5 +84,5 @@ const server = http.createServer(async (req, res) => {
 });
 
 server.listen(PORT, () => {
-  console.log(`Сервер запущен: http://localhost:\${PORT}`);
+  console.log(`Сервер запущен: http://localhost:${PORT}`);
 });
