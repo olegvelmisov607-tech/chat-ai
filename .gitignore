@@ -45,5 +45,6 @@ coverage/
 .temp/
 .tmp/
 
-# Local config with secrets
-gigacode.json
+# AI / MCP settings (содержат токены!)
+.gigacode_vsc/
+gigacode.jsonc

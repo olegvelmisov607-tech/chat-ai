@@ -3,7 +3,13 @@
   "name": "Local AI PWA Chat Client",
   "icons": [
     {
-      "src": "https://cdn-icons-png.flaticon.com/512/1698/1698535.png",
+      "src": "/icon-192.png",
+      "type": "image/png",
+      "sizes": "192x192",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icon-512.png",
       "type": "image/png",
       "sizes": "512x512",
       "purpose": "any maskable"

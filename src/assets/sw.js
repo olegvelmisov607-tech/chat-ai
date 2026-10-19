@@ -2,7 +2,9 @@ const CACHE_NAME = 'qwen-chat-v2';
 const ASSETS = [
   '/',
   '/index.html',
-  '/manifest.json'
+  '/manifest.json',
+  '/icon-512.png',
+  '/icon-192.png'
 ];
 
 self.addEventListener('install', (e) => {

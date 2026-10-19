@@ -32,19 +32,19 @@ export default {
     }),
     new CopyPlugin({
       patterns: [
-        { from: 'src/manifest.json', to: 'manifest.json' },
-        { from: 'src/sw.js', to: 'sw.js' },
+        // ОБНОВЛЕННЫЕ ПУТИ:
+        { from: 'src/assets/manifest.json', to: 'manifest.json' },
+        { from: 'src/assets/sw.js', to: 'sw.js' },
+        { from: 'src/assets/icon-512.png', to: 'icon-512.png' },
+        { from: 'src/assets/icon-192.png', to: 'icon-192.png' }
       ],
     }),
-  
     new ESLintPlugin({
       extensions: ['js'],
       fix: true,
-      // ДОБАВЛЯЕМ ЭТИ ДВЕ СТРОКИ:
-      context: path.resolve(__dirname, 'src'), // Где искать файлы
-      configType: 'flat', // Говорим плагину, что у нас Flat Config
-      overrideConfigFile: path.resolve(__dirname, 'eslint.config.js'), // Путь к конфигу
+      context: path.resolve(__dirname, 'src'),
+      configType: 'flat',
+      overrideConfigFile: path.resolve(__dirname, 'eslint.config.js'),
     }),
-
   ],
 };

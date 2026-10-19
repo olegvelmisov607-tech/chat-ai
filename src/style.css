@@ -117,27 +117,25 @@ main#app {
   margin-bottom: 15px;
   display: flex;
   flex-direction: column;
-  align-items: flex-start; /* Наше главное лекарство: ИИ прижимается влево */
+  align-items: flex-start;
   gap: 16px;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
 }
 
-/* Общий базовый стиль для пузыря сообщения */
 .message {
   padding: 12px 16px;
   border-radius: var(--radius-lg);
   width: auto;
-  max-width: 75%; /* Пузырь больше не растягивается в узкую полосу */
+  max-width: 75%;
   line-height: 1.5;
   font-size: 15px;
   word-break: break-word;
   box-shadow: 0 1px 2px rgba(0,0,0,0.05);
   display: flex;
-  flex-direction: column; /* Текст автора и контент ложатся строго друг под друга */
+  flex-direction: column;
   gap: 4px;
 }
 
-/* Класс автора (если генерируется скриптом внутри .message) */
 .message-author {
   font-weight: 700;
   font-size: 0.85em;
@@ -148,7 +146,7 @@ main#app {
 
 .user {
   background-color: var(--user-msg-bg);
-  align-self: flex-end; /* Пользовательские сообщения прижимаются вправо */
+  align-self: flex-end;
   border-bottom-right-radius: 2px;
 }
 
@@ -159,12 +157,12 @@ main#app {
 
 .ai {
   background-color: var(--ai-msg-bg);
-  align-self: flex-start; /* ИИ сообщения прижимаются влево */
+  align-self: flex-start;
   border-bottom-left-radius: 2px;
 }
 
 .ai .message-author {
-  color: #c0392b; /* Выделим имя ИИ приятным бордовым тоном */
+  color: #c0392b;
 }
 
 .thought {
@@ -247,6 +245,41 @@ main#app {
   background-color: #27ae60;
 }
 
+/* =========================================
+   TOAST NOTIFICATIONS (Красивое уведомление)
+   ========================================= */
+.toast {
+  position: fixed;
+  bottom: 40px;
+  left: 50%;
+  /* Изначально спрятан внизу */
+  transform: translateX(-50%) translateY(100px);
+  
+  /* Стиль: Розовое стекло */
+  background: rgba(255, 235, 240, 0.95);
+  color: #c2185b; /* Насыщенный розовый */
+  padding: 14px 28px;
+  border-radius: 50px; /* Форма пилюли */
+  border: 1px solid rgba(194, 24, 91, 0.2);
+  
+  font-size: 15px;
+  font-weight: 600;
+  box-shadow: 0 10px 25px rgba(194, 24, 91, 0.2), 0 4px 10px rgba(0, 0, 0, 0.05);
+  backdrop-filter: blur(8px); /* Эффект размытия */
+  
+  opacity: 0;
+  transition: transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275), opacity 0.3s ease;
+  z-index: 9999;
+  text-align: center;
+  pointer-events: none; /* Чтобы тост не перекрывал кнопки */
+}
+
+/* Класс для появления */
+.toast.show {
+  transform: translateX(-50%) translateY(0);
+  opacity: 1;
+}
+
 @media (max-width: 576px) {
   .navbar {
     padding: 10px 12px;
@@ -286,6 +319,15 @@ main#app {
   .chat-input-area button {
     padding: 0 14px;
     font-size: 14px;
+  }
+  
+  /* На мобилках поднимаем тост выше клавиатуры */
+  .toast {
+    bottom: 90px;
+    font-size: 13px;
+    padding: 12px 20px;
+    width: calc(100% - 40px);
+    border-radius: 12px;
   }
 }
 
