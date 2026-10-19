@@ -15,12 +15,21 @@
       <a href="#chat" class="nav-link">Чат</a>
       <a href="#settings" class="nav-link">Настройки</a>
     </div>
-    <div class="model-selector-wrapper">
-      <label for="model-select" style="color: white; margin-right: 5px;">Модель:</label>
-      <select id="model-select">
-        <option value="qwen">Qwen</option>
-        <option value="deepseek-r1">DeepSeek (Reasoning)</option>
-      </select>
+    
+    <div class="controls-wrapper">
+      <div class="model-selector-wrapper">
+        <label for="model-select" style="color: white; margin-right: 5px;">Модель:</label>
+        <select id="model-select">
+          <option value="qwen">Qwen</option>
+          <option value="deepseek-r1">DeepSeek (Reasoning)</option>
+        </select>
+      </div>
+
+      <div class="temperature-wrapper">
+        <label for="temperature-slider">Temp:</label>
+        <input type="range" id="temperature-slider" min="0" max="1" step="0.1" value="0.7">
+        <span id="temp-value">0.7</span>
+      </div>
     </div>
   </nav>
 

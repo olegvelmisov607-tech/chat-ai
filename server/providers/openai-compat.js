@@ -1,8 +1,15 @@
-export async function* streamOpenAICompat({ baseUrl, apiKey, model, messages, signal }) {
+// ДОБАВЛЕНО: temperature в аргументах
+export async function* streamOpenAICompat({ baseUrl, apiKey, model, messages, temperature, signal }) {
   const headers = { 'Content-Type': 'application/json; charset=utf-8' };
   if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`;
 
-  const bodyString = JSON.stringify({ model, messages, stream: true });
+  // Формируем тело с температурой (если не передана — 0.7)
+  const bodyString = JSON.stringify({ 
+    model, 
+    messages, 
+    stream: true,
+    temperature: temperature !== undefined ? temperature : 0.7 
+  });
 
   const res = await fetch(`${baseUrl}/chat/completions`, {
     method: 'POST',
@@ -31,7 +38,6 @@ export async function* streamOpenAICompat({ baseUrl, apiKey, model, messages, si
 
     for (const line of lines) {
       const trimmed = line.trim();
-      //console.log(`[RAW CHUNK] ${line}`);
       if (!trimmed || !trimmed.startsWith('data: ')) continue;
       const dataStr = trimmed.slice(6);
       if (dataStr === '[DONE]') return;

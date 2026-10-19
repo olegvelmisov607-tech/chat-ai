@@ -5,7 +5,8 @@ let cloudFailures = 0;
 const FAILS_TO_OPEN = 2;
 let breakerOpenUntil = 0;
 
-export async function* streamWithFallback({ model, messages, signal }) {
+// ДОБАВЛЕНО: temperature в аргументах
+export async function* streamWithFallback({ model, messages, temperature, signal }) {
   const mapping = modelMap[model] || modelMap['qwen'];
   const isCloudAvailable = Date.now() > breakerOpenUntil && !!config.deepseek.apiKey;
 
@@ -16,6 +17,7 @@ export async function* streamWithFallback({ model, messages, signal }) {
         apiKey: config.deepseek.apiKey,
         model: mapping.cloud,
         messages,
+        temperature, // ДОБАВЛЕНО
         signal
       });
       cloudFailures = 0;
@@ -31,7 +33,6 @@ export async function* streamWithFallback({ model, messages, signal }) {
       
       console.warn(`[Fallback] Cloud failed (${err.message}). Switching to local...`);
       
-      // Формируем человекопонятную причину
       let reason = 'Облачный API временно недоступен.';
       if (err.message === 'fetch failed') {
         reason = 'Нет соединения с интернетом или серверы DeepSeek заблокированы.';
@@ -50,24 +51,24 @@ export async function* streamWithFallback({ model, messages, signal }) {
         apiKey: null,
         model: mapping.local,
         messages,
+        temperature, // ДОБАВЛЕНО
         signal
       });
       return;
     }
   } else {
-      // Если брейкер открыт или нет ключа
       let reason = !config.deepseek.apiKey 
         ? 'API-ключ DeepSeek не найден.' 
         : 'Серверы DeepSeek временно недоступны (сработал Circuit Breaker).';
       yield { type: 'system_alert', message: `${reason} Переключено на локальную модель.` };
   }
 
-  // Если брейкер открыт, идем сразу на локалку
   yield* streamOpenAICompat({
     baseUrl: config.ollama.baseUrl,
     apiKey: null,
     model: mapping.local,
     messages,
+    temperature, // ДОБАВЛЕНО
     signal
   });
 }

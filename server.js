@@ -4,6 +4,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { config } from './server/config.js';
 import { streamWithFallback } from './server/fallback.js';
+import { renderSSR } from './server/ssr.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -17,7 +18,6 @@ const MIME_TYPES = {
 };
 
 const server = http.createServer(async (req, res) => {
-  // CORS
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -33,8 +33,8 @@ const server = http.createServer(async (req, res) => {
     req.on('data', chunk => { body += chunk; });
     req.on('end', async () => {
       try {
-        // Клиент теперь шлет messages, а не prompt
-        const { messages, model } = JSON.parse(body);
+        // ДОБАВЛЕНО: temperature
+        const { messages, model, temperature } = JSON.parse(body);
 
         res.writeHead(200, {
           'Content-Type': 'text/event-stream',
@@ -42,8 +42,8 @@ const server = http.createServer(async (req, res) => {
           'Connection': 'keep-alive'
         });
 
-        // Используем наш умный стример с fallback
-        for await (const chunk of streamWithFallback({ messages, model, signal: req.signal })) {
+        // Передаем temperature в streamWithFallback
+        for await (const chunk of streamWithFallback({ messages, model, temperature, signal: req.signal })) {
           res.write(`data: ${JSON.stringify(chunk)}\n\n`);
         }
         
@@ -63,14 +63,28 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // Раздача статики
+  const userAgent = req.headers['user-agent'] || '';
+  const isBot = /googlebot|bingbot|yandex|telegrambot|twitterbot|facebookexternalhit|linkedinbot/i.test(userAgent);
+
+  if (req.url === '/' && isBot) {
+    try {
+      const ssrHtml = renderSSR();
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+      res.end(ssrHtml);
+    } catch (error) {
+      console.error('[SSR Error]', error);
+      res.writeHead(500);
+      res.end('Internal Server Error');
+    }
+    return;
+  }
+
   let filePath = path.join(__dirname, 'dist', req.url === '/' ? 'index.html' : req.url.split('?')[0]);
   const ext = path.extname(filePath);
   const contentType = MIME_TYPES[ext] || 'application/octet-stream';
 
   fs.readFile(filePath, (err, content) => {
     if (err) {
-      // SPA-роутинг
       if (!ext) {
         fs.readFile(path.join(__dirname, 'dist', 'index.html'), (err2, content2) => {
           if (err2) {

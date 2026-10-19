@@ -3,6 +3,9 @@ import { initDB, saveMessage, getAllMessages } from './db.js';
 
 let dbInstance = null;
 
+// Флаг для контроля показа тоста Fallback (показываем только 1 раз)
+let hasShownFallbackAlert = false;
+
 const routes = {
   '#chat': () => switchScreen('screen-chat'),
   '#settings': () => switchScreen('screen-settings'),
@@ -25,6 +28,16 @@ const chatForm = document.getElementById('chat-form');
 const userInput = document.getElementById('user-input');
 const chatMessages = document.getElementById('chat-messages');
 const modelSelect = document.getElementById('model-select');
+
+// Элементы управления температурой
+const tempSlider = document.getElementById('temperature-slider');
+const tempValue = document.getElementById('temp-value');
+
+if (tempSlider && tempValue) {
+  tempSlider.addEventListener('input', (e) => {
+    tempValue.textContent = e.target.value;
+  });
+}
 
 // Безопасный рендеринг текста с поддержкой тегов <think>
 function renderTextSafely(container, text) {
@@ -141,10 +154,16 @@ chatForm.addEventListener('submit', async (e) => {
   try {
     console.log('[AI Chat] Отправка запроса на сервер...');
     
+    const temperature = tempSlider ? parseFloat(tempSlider.value) : 0.7;
+
     const response = await fetch('/api/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ messages: messagesContext, model: selectedModel })
+      body: JSON.stringify({ 
+        messages: messagesContext, 
+        model: selectedModel,
+        temperature: temperature
+      })
     });
 
     if (!response.ok) throw new Error(`Network response was not ok: ${response.status}`);
@@ -159,7 +178,7 @@ chatForm.addEventListener('submit', async (e) => {
 
       buffer += decoder.decode(value, { stream: true });
       const lines = buffer.split('\n\n');
-      buffer = lines.pop(); // Оставляем неполную строку
+      buffer = lines.pop();
 
       for (const line of lines) {
         if (!line.startsWith('data: ')) continue;
@@ -171,7 +190,12 @@ chatForm.addEventListener('submit', async (e) => {
           
           if (parsed.type === 'system_alert') {
             console.warn('[AI Chat] Fallback сработал:', parsed.message);
-            showToast(parsed.message);
+            
+            // Показываем тост только ОДИН раз за сессию
+            if (!hasShownFallbackAlert) {
+              showToast(parsed.message);
+              hasShownFallbackAlert = true;
+            }
           } else if (parsed.type === 'error') {
             console.error(`[AI Chat] Ошибка от сервера: ${parsed.message}`);
             
@@ -179,7 +203,7 @@ chatForm.addEventListener('submit', async (e) => {
             showToast(`⚠️ ${friendlyText}`);
             aiContainer.textContent = `Ошибка: ${friendlyText}`;
             
-            return; // Прерываем цикл, так как это фатальная ошибка
+            return;
           } else if (parsed.type === 'reasoning') {
             fullReasoning += parsed.text;
             renderTextSafely(aiContainer, `<think>${fullReasoning}</think>${fullAIResponse}`);
@@ -199,7 +223,6 @@ chatForm.addEventListener('submit', async (e) => {
       }
     }
 
-    // Сохраняем в БД итоговый ответ
     const textToSave = fullReasoning ? `<think>${fullReasoning}</think>\n${fullAIResponse}` : fullAIResponse;
     await saveMessage(dbInstance, { sender: aiName, text: textToSave, className: 'ai' });
     console.log('[AI Chat] Ответ успешно сохранен в IndexedDB');
