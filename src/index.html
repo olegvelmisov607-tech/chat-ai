@@ -36,10 +36,26 @@
   <main id="app">
     <section id="screen-chat" class="screen active">
       <div id="chat-messages" class="messages-container"></div>
-      <form id="chat-form" class="chat-input-area">
-        <input type="text" id="user-input" placeholder="Введите сообщение..." required autocomplete="off">
-        <button type="submit">Отправить</button>
-      </form>
+      
+      <!-- Обертка для Drag-n-Drop -->
+      <div id="drop-zone" class="chat-input-wrapper">
+        <!-- Превью картинки -->
+        <div id="image-preview-container" class="hidden">
+          <img id="image-preview" src="" alt="Preview">
+          <button type="button" id="remove-image-btn" title="Удалить">&times;</button>
+        </div>
+
+        <form id="chat-form" class="chat-input-area" style="padding: 8px 12px !important; display: flex; align-items: center; gap: 12px;">
+          <input type="file" id="file-input" accept="image/png, image/jpeg, image/webp, image/gif" class="hidden">
+          
+          <button type="button" id="attach-btn" title="Прикрепить картинку">📎</button>
+          
+          <!-- required УДАЛЕН -->
+          <input type="text" id="user-input" placeholder="Введите сообщение..." autocomplete="off" style="height: 52px !important; padding: 0 15px !important; font-size: 16px !important; flex: 1; border: none !important; border-radius: 6px; background-color: var(--bg-color); outline: none;">
+          
+          <button type="submit" id="send-btn" disabled>Отправить3</button>
+        </form>
+      </div>
     </section>
 
     <section id="screen-settings" class="screen">

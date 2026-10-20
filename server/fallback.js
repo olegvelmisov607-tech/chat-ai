@@ -5,10 +5,12 @@ let cloudFailures = 0;
 const FAILS_TO_OPEN = 2;
 let breakerOpenUntil = 0;
 
-// ДОБАВЛЕНО: temperature в аргументах
 export async function* streamWithFallback({ model, messages, temperature, signal }) {
   const mapping = modelMap[model] || modelMap['qwen'];
-  const isCloudAvailable = Date.now() > breakerOpenUntil && !!config.deepseek.apiKey;
+  
+  // Проверяем, поддерживает ли облако этот тип запроса
+  const isCloudSupported = mapping.cloud !== null;
+  const isCloudAvailable = isCloudSupported && Date.now() > breakerOpenUntil && !!config.deepseek.apiKey;
 
   if (isCloudAvailable) {
     try {
@@ -17,7 +19,7 @@ export async function* streamWithFallback({ model, messages, temperature, signal
         apiKey: config.deepseek.apiKey,
         model: mapping.cloud,
         messages,
-        temperature, // ДОБАВЛЕНО
+        temperature,
         signal
       });
       cloudFailures = 0;
@@ -46,29 +48,44 @@ export async function* streamWithFallback({ model, messages, temperature, signal
 
       yield { type: 'system_alert', message: `${reason} Переключено на локальную модель.` };
       
+      // Сообщаем фронту, что отвечает локальная модель
+      yield { type: 'model_info', modelName: mapping.local }; 
+      
       yield* streamOpenAICompat({
         baseUrl: config.ollama.baseUrl,
         apiKey: null,
         model: mapping.local,
         messages,
-        temperature, // ДОБАВЛЕНО
+        temperature,
         signal
       });
       return;
     }
   } else {
-      let reason = !config.deepseek.apiKey 
-        ? 'API-ключ DeepSeek не найден.' 
-        : 'Серверы DeepSeek временно недоступны (сработал Circuit Breaker).';
-      yield { type: 'system_alert', message: `${reason} Переключено на локальную модель.` };
+      let reason = '';
+      if (!isCloudSupported) {
+        reason = 'Анализ изображений доступен только на локальной модели.';
+      } else if (!config.deepseek.apiKey) {
+        reason = 'API-ключ DeepSeek не найден.';
+      } else {
+        reason = 'Серверы DeepSeek временно недоступны (сработал Circuit Breaker).';
+      }
+      
+      if (isCloudSupported) {
+        yield { type: 'system_alert', message: `${reason} Переключено на локальную модель.` };
+      }
   }
 
+  // Сообщаем фронту, что отвечает локальная модель
+  yield { type: 'model_info', modelName: mapping.local };
+
+  // Идем в Ollama
   yield* streamOpenAICompat({
     baseUrl: config.ollama.baseUrl,
     apiKey: null,
     model: mapping.local,
     messages,
-    temperature, // ДОБАВЛЕНО
+    temperature,
     signal
   });
 }

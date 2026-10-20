@@ -1,18 +1,64 @@
-# Local AI SPA+PWA Chat Client
+# Local AI SPA+PWA Chat Client 🚀
 
-Современное автономное веб-приложение (SPA/PWA) для работы с локальными большими языковыми моделями через API **Ollama**. Архитектура построена на базе **чистого клиентского JavaScript (Vanilla ES Modules)** без использования сторонних UI-фреймворков, и нативного **Node.js** на бэкенде.
+Современное автономное веб-приложение (SPA/PWA) для работы с большими языковыми моделями (DeepSeek Cloud и локальная Ollama). Архитектура построена на **чистом JavaScript (Vanilla ES6+) без использования UI-фреймворков** и **нативном Node.js** на бэкенде.
 
-## 🚀 Основной стек технологий
-* **Frontend:** Vanilla JS (ES6+ Modules), HTML5, CSS3.
-* **Backend:** Node.js (HTTP, Streams API).
-* **Сборка и Качество:** Webpack 5, ESLint v9+.
-* **PWA & Офлайн:** Service Worker API, Web App Manifest.
-* **Data & Streaming:** Fetch / ReadableStream (SSE), IndexedDB API.
-* **Тестирование:** Playwright (E2E).
+Проект создан как учебный полигон (pet-project) для демонстрации современных подходов к веб-разработке: от Graceful Degradation и SSE-стриминга до SSR для SEO-ботов и E2E-тестирования.
 
-## 🛠️ Быстрый старт
-```bash
-npm install
-npx playwright install
+## ✨ Ключевые особенности
+
+* **Graceful Degradation (Cloud → Local):** Бэкенд автоматически переключается между облачным API DeepSeek и локальной Ollama. Если облако недоступно (нет интернета, ошибка 5xx, 429), клиент даже не заметит сбоя: ответ придет от локальной модели, а пользователь увидит аккуратное Toast-уведомление (один раз за сессию).
+* **Circuit Breaker:** При повторяющихся ошибках облачного API, запросы к нему временно блокируются (на 30 секунд), чтобы не тратить время пользователя на ожидание таймаутов.
+* **SSR & SEO (Server-Side Rendering):** Сервер определяет поисковых ботов (Google, Yandex, Telegram) по заголовку `User-Agent` и отдает им готовый HTML-код с микроразметкой Schema.org (JSON-LD) и Open Graph. Обычные пользователи при этом получают SPA-приложение.
+* **Streaming (SSE):** Реалтайм-рендеринг ответов моделей через `ReadableStream` и Server-Sent Events.
+* **Настройка генерации (Temperature):** Ползунок температуры в UI, значение которого пробрасывается через всю цепочку (Client → API → Server → LLM) для управления креативностью модели.
+* **Безопасный Reasoning (DeepSeek-R1):** Кастомный парсер тегов `<think>` (и поля `reasoning_content` от DeepSeek API) безопасно рендерит «рассуждения» модели без уязвимости XSS.
+* **PWA & Offline Mode:** Полноценный Web App Manifest и Service Worker (стратегия Cache-first) для работы интерфейса без сети и установки приложения.
+* **Local Storage:** Персистентное сохранение истории сообщений в IndexedDB.
+
+## 🛠️ Стек технологий
+
+* **Frontend:** Vanilla JS (ES6+ Modules), HTML5, CSS3 (Flexbox, CSS Variables, `100dvh`), PWA (Service Worker).
+* **Backend:** Node.js (нативный модуль `http`, Streams API, SSE).
+* **AI API:** OpenAI-совместимый API (DeepSeek Cloud + Ollama).
+* **Сборка и Качество:** Webpack 5, ESLint v9 (Flat Config).
+* **Тестирование:** Playwright (E2E с мокированием сетевых запросов).
+* **AI Agent Harness:** Настроены MCP-серверы (Puppeteer, GitHub) и кастомные Skills (например, `vanilla-js-audit`) для GigaCode.
+
+## 📐 Архитектура Fallback (Отказоустойчивость)
+
+1. Клиент отправляет запрос на `/api/chat`.
+2. Бэкенд пробует отправить запрос в DeepSeek Cloud.
+3. Если облако отдает `401/403` (ошибка конфигурации) — бэкенд возвращает ошибку.
+4. Если сеть недоступна, таймаут или `5xx` — бэкенд включает Circuit Breaker и автоматически переключается на локальную Ollama.
+5. Клиент получает событие `system_alert` и показывает уведомление (один раз за сессию, чтобы не спамить).
+
+## 🚀 Быстрый старт
+
+1. Установите зависимости:
+   npm install
+
+2. Создайте файл `.env` в корне проекта и укажите ваш ключ DeepSeek (опционально):
+   PORT=3000
+   DEEPSEEK_API_KEY=sk-ваш_ключ
+   DEEPSEEK_BASE_URL=https://api.deepseek.com/v1
+   OLLAMA_BASE_URL=http://127.0.0.1:11434/v1
+   *(Если ключа нет, приложение будет использовать только локальную Ollama).*
+
+3. Убедитесь, что Ollama запущена и модели скачаны (например, `qwen3:8b`, `deepseek-r1:7b`).
+
+4. Соберите проект и запустите сервер:
+   npm run build
+   npm start
+   Приложение будет доступно по адресу: `http://localhost:3000`.
+
+## 🧪 Тестирование
+
+E2E-тесты написаны на Playwright. Они **мокают** сетевые запросы, поэтому для их прохождения не требуется запущенная Ollama или действующий API-ключ.
+
 npm run test:e2e
-```
+
+## 🔍 Как проверить SSR
+
+Чтобы увидеть, что отдается поисковым ботам, выполните в терминале:
+curl -A "Googlebot" http://localhost:3000/
+Вы увидите чистый HTML с метатегами и микроразметкой. Для обычного пользователя в браузере отдается интерактивный SPA-клиент.

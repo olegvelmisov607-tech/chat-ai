@@ -40,7 +40,7 @@ body {
   z-index: 10;
   flex-wrap: wrap;
   gap: 10px;
-  flex-shrink: 0; /* Навбар не сжимается */
+  flex-shrink: 0;
 }
 
 .nav-links {
@@ -110,15 +110,15 @@ body {
   text-align: center;
 }
 
-/* --- КРИТИЧЕСКИ ВАЖНЫЙ БЛОК ДЛЯ ВЕРСТКИ --- */
+/* --- ВЕРСТКА ЭКРАНОВ --- */
 main#app {
   flex: 1;
   display: flex;
   flex-direction: column;
   position: relative;
   background-color: var(--bg-color);
-  min-height: 0; /* Позволяет контейнеру сжиматься */
-  overflow: hidden; /* Запрещает скролл на уровне main */
+  min-height: 0;
+  overflow: hidden;
 }
 
 .screen {
@@ -129,7 +129,7 @@ main#app {
   margin: 0 auto;
   height: 100%;
   padding: 20px;
-  min-height: 0; /* Важно для вложенных флекс-контейнеров */
+  min-height: 0;
 }
 
 .screen.active {
@@ -140,12 +140,12 @@ main#app {
   padding: 15px;
   height: 100%;
   min-height: 0;
-  overflow: hidden; /* Контент скроллится только в messages-container */
+  overflow: hidden;
 }
 
 .messages-container {
   flex: 1;
-  min-height: 0; /* Разрешает скролл внутри */
+  min-height: 0;
   overflow-y: auto;
   background: var(--chat-bg);
   border: 1px solid var(--border-color);
@@ -158,8 +158,8 @@ main#app {
   gap: 16px;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
 }
-/* ----------------------------------------- */
 
+/* --- СООБЩЕНИЯ --- */
 .message {
   padding: 12px 16px;
   border-radius: var(--radius-lg);
@@ -172,6 +172,21 @@ main#app {
   display: flex;
   flex-direction: column;
   gap: 4px;
+}
+
+.message-content {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.message img {
+  max-width: 100%;
+  border-radius: 8px;
+  max-height: 250px;
+  object-fit: contain;
+  border: 1px solid var(--border-color);
+  display: block;
 }
 
 .user {
@@ -198,20 +213,39 @@ main#app {
   border-radius: 4px;
 }
 
-.chat-input-area {
+/* --- ЗОНА ВВОДА И ВЛОЖЕНИЯ --- */
+.chat-input-wrapper {
   display: flex;
-  gap: 10px;
-  background: var(--chat-bg);
-  padding: 10px;
-  border-radius: var(--radius-lg);
-  border: 1px solid var(--border-color);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
-  flex-shrink: 0; /* Форма ввода не сжимается */
+  flex-direction: column;
+  gap: 8px;
+  flex-shrink: 0;
+  transition: var(--transition);
 }
 
-.chat-input-area input {
+.chat-input-wrapper.drag-over {
+  background-color: rgba(43, 82, 120, 0.08);
+  border-radius: var(--radius-lg);
+  outline: 2px dashed var(--primary-color);
+}
+
+/* Панель формы: центрируем элементы, задаем высоту */
+.chat-input-area {
+  display: flex;
+  gap: 12px;
+  align-items: center; /* Выравниваем все по центру */
+  background: var(--chat-bg);
+  padding: 8px 15px; /* Аккуратные отступы */
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-color);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+  flex-shrink: 0;
+}
+
+/* ИНПУТ: жестко 52px в высоту, чтобы был большим */
+.chat-input-area input[type="text"] {
   flex: 1;
-  padding: 12px;
+  height: 52px !important;
+  padding: 0 15px !important;
   border: 1px solid transparent;
   border-radius: var(--radius-sm);
   font-size: 16px;
@@ -220,27 +254,105 @@ main#app {
   transition: var(--transition);
 }
 
-.chat-input-area input:focus {
+.chat-input-area input[type="text"]:focus {
   background-color: #ffffff;
   border-color: var(--primary-color);
 }
 
-.chat-input-area button {
-  padding: 0 20px;
+#attach-btn {
+  background: transparent;
+  border: none;
+  font-size: 1.5rem;
+  cursor: pointer;
+  width: 52px;
+  height: 52px;
+  opacity: 0.6;
+  transition: opacity 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  margin-left: -5px;
+}
+
+#attach-btn:hover {
+  opacity: 1;
+  background-color: var(--bg-color);
+}
+
+/* КНОПКА ОТПРАВИТЬ: тоже 52px */
+.chat-input-area button[type="submit"] {
+  padding: 0 24px;
+  height: 52px !important;
   background-color: var(--primary-color);
   color: white;
   border: none;
   border-radius: var(--radius-sm);
-  font-size: 15px;
+  font-size: 16px;
   font-weight: 600;
   cursor: pointer;
   transition: var(--transition);
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
-.chat-input-area button:hover {
+.chat-input-area button[type="submit"]:hover {
   background-color: var(--primary-dark);
 }
 
+/* Превью картинки */
+#image-preview-container {
+  position: relative;
+  width: max-content;
+  margin-left: 10px;
+  margin-top: 10px;
+  animation: fadeIn 0.2s ease-out;
+}
+
+#image-preview {
+  max-height: 80px;
+  max-width: 150px;
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+  object-fit: cover;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+#remove-image-btn {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  background: #ff4d4f;
+  color: white;
+  border: none;
+  border-radius: 50%;
+  width: 22px;
+  height: 22px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+  font-size: 14px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+  transition: transform 0.1s;
+}
+
+#remove-image-btn:hover {
+  transform: scale(1.1);
+}
+
+.hidden {
+  display: none !important;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(5px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* --- НАСТРОЙКИ --- */
 #screen-settings h1 {
   margin-bottom: 15px;
   font-size: 24px;
@@ -275,18 +387,15 @@ main#app {
   bottom: 40px;
   left: 50%;
   transform: translateX(-50%) translateY(100px);
-  
   background: rgba(255, 235, 240, 0.95);
   color: #c2185b;
   padding: 14px 28px;
   border-radius: 50px;
   border: 1px solid rgba(194, 24, 91, 0.2);
-  
   font-size: 15px;
   font-weight: 600;
   box-shadow: 0 10px 25px rgba(194, 24, 91, 0.2), 0 4px 10px rgba(0, 0, 0, 0.05);
   backdrop-filter: blur(8px);
-  
   opacity: 0;
   transition: transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275), opacity 0.3s ease;
   z-index: 9999;
@@ -300,7 +409,7 @@ main#app {
 }
 
 /* =========================================
-   MEDIA QUERIES
+   MEDIA QUERIES (Мы удалили отсюда все правила для инпута, чтобы они не перебивали десктоп)
    ========================================= */
 @media (max-width: 768px) {
   .navbar {
@@ -308,89 +417,48 @@ main#app {
     align-items: stretch;
     padding: 10px 15px;
   }
-
   .nav-links {
     justify-content: center;
     margin-bottom: 5px;
   }
-
   .controls-wrapper {
     justify-content: space-between;
     width: 100%;
   }
-
   .temperature-wrapper {
     flex: 1;
     justify-content: flex-end;
   }
-
   .temperature-wrapper input[type="range"] {
     width: 100px;
   }
 }
 
 @media (max-width: 576px) {
-  .nav-link {
-    font-size: 15px;
-  }
-  
+  .nav-link { font-size: 15px; }
   .model-selector-wrapper label,
-  .temperature-wrapper label {
-    display: none;
-  }
-
-  .model-selector-wrapper select {
-    font-size: 13px;
-    padding: 5px 8px;
-  }
-
+  .temperature-wrapper label { display: none; }
+  .model-selector-wrapper select { font-size: 13px; padding: 5px 8px; }
   .controls-wrapper {
     flex-direction: column;
     align-items: stretch;
     gap: 10px;
   }
-
   .model-selector-wrapper,
-  .temperature-wrapper {
-    justify-content: space-between;
-  }
-
-  .temperature-wrapper input[type="range"] {
-    flex: 1;
-    margin: 0 10px;
-  }
-
-  #screen-chat {
-    padding: 8px;
-  }
-
+  .temperature-wrapper { justify-content: space-between; }
+  .temperature-wrapper input[type="range"] { flex: 1; margin: 0 10px; }
+  #screen-chat { padding: 8px; }
   .messages-container {
     padding: 10px;
     border-radius: 8px;
     gap: 12px;
   }
-
   .message {
     max-width: 88%;
     font-size: 14px;
     padding: 10px 12px;
   }
-
-  .chat-input-area {
-    padding: 6px;
-    border-radius: 8px;
-    gap: 6px;
-  }
-
-  .chat-input-area input {
-    padding: 10px;
-    font-size: 16px;
-  }
-
-  .chat-input-area button {
-    padding: 0 14px;
-    font-size: 14px;
-  }
+  /* Убрали правила для .chat-input-area, чтобы форма не ломалась на мобилках */
   
   .toast {
     bottom: 90px;
@@ -402,16 +470,22 @@ main#app {
 }
 
 @media (min-width: 577px) and (max-width: 992px) {
-  .screen {
-    padding: 20px 30px;
-  }
-  .message {
-    max-width: 80%;
-  }
+  .screen { padding: 20px 30px; }
+  .message { max-width: 80%; }
 }
 
 @media (min-width: 993px) {
-  .screen {
-    padding: 30px 0;
-  }
+  .screen { padding: 30px 0; }
+}
+
+.chat-input-area button[type="submit"]:disabled {
+  background-color: #a0aec0; /* Серый цвет */
+  cursor: not-allowed;
+  opacity: 0.7;
+  transform: none; /* Убираем эффект наведения */
+}
+
+.chat-input-area button[type="submit"]:disabled:hover {
+  background-color: #a0aec0; /* Не меняем цвет при наведении */
+  transform: none;
 }

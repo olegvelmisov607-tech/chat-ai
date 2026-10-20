@@ -1,13 +1,33 @@
-// ДОБАВЛЕНО: temperature в аргументах
+
+// Вспомогательная функция для эмуляции стриминга (когда stream: false)
+async function* emulateStream(text) {
+  if (!text) return;
+  // Разбиваем по словам, чтобы сохранить пробелы
+  const chunks = text.match(/\S+\s*/g) || [text];
+  for (const chunk of chunks) {
+    yield { type: 'content', text: chunk };
+    // Небольшая задержка для эффекта печатной машинки
+    await new Promise(r => setTimeout(r, 20)); 
+  }
+}
+
 export async function* streamOpenAICompat({ baseUrl, apiKey, model, messages, temperature, signal }) {
   const headers = { 'Content-Type': 'application/json; charset=utf-8' };
   if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`;
+
+  // Проверяем, есть ли изображения в сообщениях (OpenAI-формат)
+  const hasImages = messages.some(m => 
+    Array.isArray(m.content) && m.content.some(c => c.type === 'image_url')
+  );
+
+  // Для Vision-моделей принудительно отключаем нативный стриминг
+  const useStream = !hasImages;
 
   // Формируем тело с температурой (если не передана — 0.7)
   const bodyString = JSON.stringify({ 
     model, 
     messages, 
-    stream: true,
+    stream: useStream,
     temperature: temperature !== undefined ? temperature : 0.7 
   });
 
@@ -24,6 +44,18 @@ export async function* streamOpenAICompat({ baseUrl, apiKey, model, messages, te
     throw err;
   }
 
+  // ВЕТКА 1: Эмуляция стриминга (Vision)
+  if (!useStream) {
+    const data = await res.json();
+    const content = data.choices?.[0]?.message?.content || '';
+    const reasoning = data.choices?.[0]?.message?.reasoning_content || '';
+    
+    if (reasoning) yield { type: 'reasoning', text: reasoning };
+    yield* emulateStream(content);
+    return;
+  }
+
+  // ВЕТКА 2: Нативный стриминг (Текст)
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
   let buffer = '';
