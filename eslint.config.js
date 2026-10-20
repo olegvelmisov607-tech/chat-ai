@@ -22,7 +22,7 @@ export default [
     },
   },
   {
-    // Отдельный блок для конфигов, где нужны Node.js глобалы
+    // Блок для конфигов
     files: ['webpack.config.js', 'playwright.config.js'],
     languageOptions: {
       ecmaVersion: 'latest',
@@ -33,6 +33,17 @@ export default [
     },
   },
   {
-    ignores: ['dist/'],
+    // ДОБАВЛЕНО: Блок для E2E-тестов Playwright
+    files: ['**/*.spec.js', 'tests/**/*.js'],
+    languageOptions: {
+      ecmaVersion: 'latest',
+      sourceType: 'module',
+      globals: {
+        ...globals.node, // Включает Buffer, process и т.д.
+      },
+    },
+  },
+  {
+    ignores: ['dist/', 'playwright-report/', 'test-results/'],
   }
 ];
