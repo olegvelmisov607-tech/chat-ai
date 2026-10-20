@@ -228,20 +228,18 @@ main#app {
   outline: 2px dashed var(--primary-color);
 }
 
-/* Панель формы: центрируем элементы, задаем высоту */
 .chat-input-area {
   display: flex;
   gap: 12px;
-  align-items: center; /* Выравниваем все по центру */
+  align-items: center;
   background: var(--chat-bg);
-  padding: 8px 15px; /* Аккуратные отступы */
+  padding: 8px 15px;
   border-radius: var(--radius-lg);
   border: 1px solid var(--border-color);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
   flex-shrink: 0;
 }
 
-/* ИНПУТ: жестко 52px в высоту, чтобы был большим */
 .chat-input-area input[type="text"] {
   flex: 1;
   height: 52px !important;
@@ -280,7 +278,6 @@ main#app {
   background-color: var(--bg-color);
 }
 
-/* КНОПКА ОТПРАВИТЬ: тоже 52px */
 .chat-input-area button[type="submit"] {
   padding: 0 24px;
   height: 52px !important;
@@ -299,6 +296,23 @@ main#app {
 
 .chat-input-area button[type="submit"]:hover {
   background-color: var(--primary-dark);
+}
+
+.chat-input-area button[type="submit"]:disabled {
+  background-color: #a0aec0;
+  cursor: not-allowed;
+  opacity: 0.7;
+  transform: none;
+}
+
+.chat-input-area button[type="submit"]:disabled:hover {
+  background-color: #a0aec0;
+  transform: none;
+}
+
+/* Иконка для мобильной кнопки скрыта на десктопе */
+.btn-icon {
+  display: none;
 }
 
 /* Превью картинки */
@@ -409,7 +423,7 @@ main#app {
 }
 
 /* =========================================
-   MEDIA QUERIES (Мы удалили отсюда все правила для инпута, чтобы они не перебивали десктоп)
+   MEDIA QUERIES
    ========================================= */
 @media (max-width: 768px) {
   .navbar {
@@ -458,7 +472,43 @@ main#app {
     font-size: 14px;
     padding: 10px 12px;
   }
-  /* Убрали правила для .chat-input-area, чтобы форма не ломалась на мобилках */
+  
+  /* АДАПТИВНАЯ ФОРМА ВВОДА ДЛЯ ТЕЛЕФОНОВ */
+  .chat-input-area {
+    padding: 6px 8px;
+    gap: 6px;
+    border-radius: 8px;
+  }
+  .chat-input-area input[type="text"] {
+    padding: 0 10px !important;
+    font-size: 15px !important;
+    height: 44px !important;
+    min-width: 0; /* Важно для сжатия */
+  }
+  #attach-btn {
+    width: 44px !important;
+    height: 44px !important;
+    font-size: 1.2rem;
+    margin-left: 0 !important;
+  }
+  
+  /* Кнопка Отправить на мобилках становится квадратной */
+  .chat-input-area button[type="submit"] {
+    padding: 0;
+    width: 44px;
+    min-width: 44px;
+    height: 44px !important;
+    flex-shrink: 0;
+  }
+
+  /* Прячем текст "Отправить" и показываем иконку */
+  .chat-input-area button[type="submit"] .btn-text {
+    display: none;
+  }
+  .chat-input-area button[type="submit"] .btn-icon {
+    display: block;
+    font-size: 1.2rem;
+  }
   
   .toast {
     bottom: 90px;
@@ -476,16 +526,4 @@ main#app {
 
 @media (min-width: 993px) {
   .screen { padding: 30px 0; }
-}
-
-.chat-input-area button[type="submit"]:disabled {
-  background-color: #a0aec0; /* Серый цвет */
-  cursor: not-allowed;
-  opacity: 0.7;
-  transform: none; /* Убираем эффект наведения */
-}
-
-.chat-input-area button[type="submit"]:disabled:hover {
-  background-color: #a0aec0; /* Не меняем цвет при наведении */
-  transform: none;
 }
