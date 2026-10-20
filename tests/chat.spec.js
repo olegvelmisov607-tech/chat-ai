@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 
 test.describe('Local AI Chat E2E Tests', () => {
   test.beforeEach(async ({ page }) => {
-    // Переходим на локальный сервер (порт 3000, как в твоем npm start)
+    // Переходим на локальный сервер (порт 3000)
     await page.goto('http://localhost:3000');
   });
 
@@ -39,14 +39,11 @@ test.describe('Local AI Chat E2E Tests', () => {
     const sendBtn = page.locator('#send-btn');
     const inputSelector = '#user-input';
 
-    // По умолчанию кнопка должна быть неактивна (disabled)
     await expect(sendBtn).toBeDisabled();
 
-    // Вводим текст — кнопка активируется
     await page.fill(inputSelector, 'Тест');
     await expect(sendBtn).toBeEnabled();
 
-    // Удаляем текст — кнопка снова блокируется
     await page.fill(inputSelector, '');
     await expect(sendBtn).toBeDisabled();
   });
@@ -58,28 +55,22 @@ test.describe('Local AI Chat E2E Tests', () => {
 
     await expect(sendBtn).toBeDisabled();
 
-    // Симулируем загрузку файла через скрытый инпут
     await fileInput.setInputFiles({
       name: 'test-image.png',
       mimeType: 'image/png',
-      buffer: Buffer.from('fake-image-content') // Мок-картинка
+      buffer: Buffer.from('fake-image-content')
     });
 
-    // Проверяем, что превью появилось
     await expect(previewContainer).not.toHaveClass(/hidden/);
-    // И кнопка разблокировалась
     await expect(sendBtn).toBeEnabled();
 
-    // Удаляем картинку
     await page.click('#remove-image-btn');
     await expect(previewContainer).toHaveClass(/hidden/);
     await expect(sendBtn).toBeDisabled();
   });
 
   test('полный цикл отправки картинки с моком API (Vision)', async ({ page }) => {
-    // Перехватываем запрос к API, чтобы не напрягать Ollama
     await page.route('**/api/chat', async route => {
-      // Имитируем SSE-ответ от сервера
       const body = 'data: {"type":"model_info","modelName":"gemma3:12b"}\n\n' +
                    'data: {"type":"content","text":"Я вижу"}\n\n' +
                    'data: {"type":"content","text":" тестовую картинку."}\n\n' +
@@ -99,14 +90,10 @@ test.describe('Local AI Chat E2E Tests', () => {
       buffer: Buffer.from('fake-image-content')
     });
 
-    // Отправляем без текста (только картинку)
     await page.click('#send-btn');
 
-    // Ждем, пока появится ответ ИИ в чате
     const aiMessage = page.locator('.message.ai');
     await expect(aiMessage).toContainText('Я вижу тестовую картинку.');
-    
-    // Проверяем, что имя модели обновилось на gemma3:12b (из мока)
     await expect(aiMessage.locator('strong')).toHaveText('gemma3:12b: ');
   });
 
@@ -114,11 +101,56 @@ test.describe('Local AI Chat E2E Tests', () => {
     const slider = page.locator('#temperature-slider');
     const valueDisplay = page.locator('#temp-value');
 
-    // Стартовое значение 0.7
     await expect(valueDisplay).toHaveText('0.7');
-
-    // Двигаем ползунок на 0.2
     await slider.fill('0.2'); 
     await expect(valueDisplay).toHaveText('0.2');
+  });
+
+  // --- НОВЫЕ ТЕСТЫ ДЛЯ PiP И УВЕДОМЛЕНИЙ ---
+
+  test('элементы PiP и уведомлений присутствуют в интерфейсе', async ({ page }) => {
+    // Проверяем наличие кнопки PiP
+    await expect(page.locator('#pip-btn')).toBeVisible();
+    // Проверяем наличие чекбокса Авто-PiP
+    await expect(page.locator('#auto-pip-toggle')).toBeVisible();
+    // Проверяем наличие кнопки уведомлений
+    await expect(page.locator('#notify-btn')).toBeVisible();
+  });
+
+  test('авто-PiP переключается по клику', async ({ page }) => {
+    const toggle = page.locator('#auto-pip-toggle');
+    // Изначально выключен
+    await expect(toggle).not.toBeChecked();
+    // Кликаем и проверяем, что включился
+    await toggle.click();
+    await expect(toggle).toBeChecked();
+    // Кликаем еще раз и проверяем, что выключился
+    await toggle.click();
+    await expect(toggle).not.toBeChecked();
+  });
+
+  test('запрос разрешения на уведомления при клике на колокольчик', async ({ page }) => {
+    // Мокаем запрос разрешения
+    await page.addInitScript(() => {
+      window.Notification = class {
+        static permission = 'default';
+        static requestPermission = async () => {
+          window.Notification.permission = 'granted';
+          return 'granted';
+        };
+        constructor(title, options) {
+          // Для теста можно сохранить последнее уведомление
+          window.lastNotification = { title, options };
+        }
+      };
+    });
+
+    await page.goto('http://localhost:3000'); // Перезагружаем с моком
+    
+    const notifyBtn = page.locator('#notify-btn');
+    await notifyBtn.click();
+    
+    // Проверяем, что колокольчик стал активным (зеленым)
+    await expect(notifyBtn).toHaveClass(/active/);
   });
 });

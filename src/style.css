@@ -422,6 +422,12 @@ main#app {
   opacity: 1;
 }
 
+/* Стили для колокольчика */
+#notify-btn.active {
+  color: #2ecc71;
+  opacity: 1;
+}
+
 /* =========================================
    MEDIA QUERIES
    ========================================= */
@@ -448,19 +454,65 @@ main#app {
   }
 }
 
+/* --- АДАПТИВНАЯ ВЕРСТКА ДЛЯ ТЕЛЕФОНОВ --- */
 @media (max-width: 576px) {
   .nav-link { font-size: 15px; }
+  
+  /* Скрываем подписи */
   .model-selector-wrapper label,
   .temperature-wrapper label { display: none; }
-  .model-selector-wrapper select { font-size: 13px; padding: 5px 8px; }
-  .controls-wrapper {
-    flex-direction: column;
-    align-items: stretch;
-    gap: 10px;
+  
+  /* Навбар */
+  .navbar {
+    padding: 10px;
+    gap: 8px;
   }
-  .model-selector-wrapper,
-  .temperature-wrapper { justify-content: space-between; }
-  .temperature-wrapper input[type="range"] { flex: 1; margin: 0 10px; }
+
+  /* Контролы в строку с переносом */
+  .controls-wrapper {
+    flex-direction: row !important; 
+    flex-wrap: wrap; 
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+  }
+
+  /* Модель на всю ширину (1-я строка) */
+  .model-selector-wrapper {
+    flex: 1 1 100%; 
+    min-width: 100px;
+  }
+  .model-selector-wrapper select {
+    width: 100%;
+    font-size: 14px;
+    padding: 8px;
+  }
+
+  /* Температура и кнопки (2-я строка) */
+  .temperature-wrapper {
+    flex: 1;
+    min-width: 100px;
+    justify-content: flex-start;
+    gap: 5px;
+  }
+  .temperature-wrapper input[type="range"] {
+    flex: 1;
+    margin: 0;
+    width: auto;
+  }
+
+  /* Кнопки */
+  .nav-btn, #notify-btn {
+    padding: 4px 8px;
+    font-size: 1.1rem;
+  }
+  .auto-pip-label {
+    font-size: 12px;
+    margin-right: auto; 
+  }
+
+  /* Чат */
   #screen-chat { padding: 8px; }
   .messages-container {
     padding: 10px;
@@ -473,7 +525,7 @@ main#app {
     padding: 10px 12px;
   }
   
-  /* АДАПТИВНАЯ ФОРМА ВВОДА ДЛЯ ТЕЛЕФОНОВ */
+  /* Форма ввода */
   .chat-input-area {
     padding: 6px 8px;
     gap: 6px;
@@ -483,7 +535,7 @@ main#app {
     padding: 0 10px !important;
     font-size: 15px !important;
     height: 44px !important;
-    min-width: 0; /* Важно для сжатия */
+    min-width: 0;
   }
   #attach-btn {
     width: 44px !important;
@@ -492,7 +544,6 @@ main#app {
     margin-left: 0 !important;
   }
   
-  /* Кнопка Отправить на мобилках становится квадратной */
   .chat-input-area button[type="submit"] {
     padding: 0;
     width: 44px;
@@ -501,7 +552,6 @@ main#app {
     flex-shrink: 0;
   }
 
-  /* Прячем текст "Отправить" и показываем иконку */
   .chat-input-area button[type="submit"] .btn-text {
     display: none;
   }
@@ -510,6 +560,7 @@ main#app {
     font-size: 1.2rem;
   }
   
+  /* Тосты */
   .toast {
     bottom: 90px;
     font-size: 13px;
@@ -526,4 +577,44 @@ main#app {
 
 @media (min-width: 993px) {
   .screen { padding: 30px 0; }
+}
+
+/* =========================================
+   СТИЛИ ДЛЯ КНОПКИ PiP И АВТО-PIP
+   ========================================= */
+.nav-btn {
+  background: transparent;
+  border: none;
+  color: white;
+  font-size: 1.2rem;
+  cursor: pointer;
+  padding: 5px 10px;
+  border-radius: var(--radius-sm);
+  transition: var(--transition);
+  opacity: 0.7;
+}
+
+.nav-btn:hover {
+  opacity: 1;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.nav-btn.active {
+  opacity: 1;
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.auto-pip-label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 13px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.auto-pip-label input {
+  cursor: pointer;
+  accent-color: #e3f2fd;
 }

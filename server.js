@@ -16,11 +16,29 @@ const MIME_TYPES = {
   '.svg': 'image/svg+xml'
 };
 
+// --- RATE LIMITER ---
+const ipRequestCounts = new Map();
+
+function isRateLimited(ip) {
+  const now = Date.now();
+  const windowStart = now - config.rateLimitWindowMs;
+  
+  if (!ipRequestCounts.has(ip)) {
+    ipRequestCounts.set(ip, []);
+  }
+  
+  const requests = ipRequestCounts.get(ip).filter(timestamp => timestamp > windowStart);
+  requests.push(now);
+  ipRequestCounts.set(ip, requests);
+  
+  return requests.length > config.rateLimitMaxRequests;
+}
+
 const server = http.createServer(async (req, res) => {
-  // CORS
+  // CORS (добавили Authorization)
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 
   if (req.method === 'OPTIONS') {
     res.writeHead(204);
@@ -29,12 +47,29 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (req.url === '/api/chat' && req.method === 'POST') {
+    // 1. Проверка Rate Limit
+    const clientIp = req.socket.remoteAddress || 'unknown';
+    if (isRateLimited(clientIp)) {
+      res.writeHead(429, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Too Many Requests. Please wait a minute.' }));
+      return;
+    }
+
+    // 2. Проверка токена
+    const authHeader = req.headers['authorization'];
+    const token = authHeader && authHeader.split(' ')[1];
+
+    if (!token || token !== config.authToken) {
+      res.writeHead(401, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Unauthorized. Invalid or missing token.' }));
+      return;
+    }
+
     let body = '';
     let size = 0;
 
     req.on('data', chunk => {
       size += chunk.length;
-      // Защита от переполнения памяти (Payload Too Large)
       if (size > config.maxBodySize) {
         res.writeHead(413, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ error: 'Payload Too Large' }));
@@ -46,25 +81,21 @@ const server = http.createServer(async (req, res) => {
 
     req.on('end', async () => {
       try {
-        // Достаем temperature!
         const { messages, model, temperature } = JSON.parse(body);
 
-        // Проверяем, есть ли изображения в запросе
         const hasImages = messages.some(m => 
           Array.isArray(m.content) && m.content.some(c => c.type === 'image_url')
         );
 
-        // Если есть картинки — подменяем модель на 'vision'
         const routingModel = hasImages ? 'vision' : model;
 
         res.writeHead(200, {
           'Content-Type': 'text/event-stream',
           'Cache-Control': 'no-cache',
           'Connection': 'keep-alive',
-          'X-Accel-Buffering': 'no' // Отключает буферизацию в Nginx (Cloud-native)
+          'X-Accel-Buffering': 'no'
         });
 
-        // Передаем всё в fallback
         for await (const chunk of streamWithFallback({ 
           messages, 
           model: routingModel, 
@@ -97,7 +128,6 @@ const server = http.createServer(async (req, res) => {
 
   fs.readFile(filePath, (err, content) => {
     if (err) {
-      // SPA-роутинг
       if (!ext) {
         fs.readFile(path.join(__dirname, 'dist', 'index.html'), (err2, content2) => {
           if (err2) {

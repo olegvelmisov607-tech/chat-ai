@@ -30,6 +30,14 @@
         <input type="range" id="temperature-slider" min="0" max="1" step="0.1" value="0.7">
         <span id="temp-value">0.7</span>
       </div>
+
+      <!-- ДОБАВЛЕНО: Кнопка PiP и чекбокс -->
+      <button id="pip-btn" class="nav-btn" title="Вынести в отдельное окно">🪟</button>
+      <label class="auto-pip-label" title="Автоматически открывать PiP при сворачивании вкладки">
+        <input type="checkbox" id="auto-pip-toggle">
+        Авто-PiP
+      </label>
+      <button id="notify-btn" class="nav-btn" title="Включить уведомления">🔔</button>
     </div>
   </nav>
 
@@ -50,7 +58,6 @@
           
           <button type="button" id="attach-btn" title="Прикрепить картинку">📎</button>
           
-          <!-- required УДАЛЕН -->
           <input type="text" id="user-input" placeholder="Введите сообщение..." autocomplete="off" style="height: 52px !important; padding: 0 15px !important; font-size: 16px !important; flex: 1; border: none !important; border-radius: 6px; background-color: var(--bg-color); outline: none;">
           
           <button type="submit" id="send-btn" disabled>

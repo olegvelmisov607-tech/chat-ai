@@ -35,17 +35,56 @@ const tempSlider = document.getElementById('temperature-slider');
 const tempValue = document.getElementById('temp-value');
 const sendBtn = document.getElementById('send-btn');
 
-// Функция проверки состояния кнопки
+// --- УВЕДОМЛЕНИЯ ---
+const notifyBtn = document.getElementById('notify-btn');
+
+// Проверяем статус при загрузке
+if ('Notification' in window) {
+  if (Notification.permission === 'granted') {
+    notifyBtn.classList.add('active');
+    notifyBtn.title = 'Уведомления включены';
+  }
+} else if (notifyBtn) {
+  notifyBtn.style.display = 'none'; // Скрываем, если браузер не поддерживает
+}
+
+// Обработчик клика по колокольчику
+if (notifyBtn) {
+  notifyBtn.addEventListener('click', async () => {
+    if (!('Notification' in window)) return;
+    
+    if (Notification.permission !== 'granted') {
+      const permission = await Notification.requestPermission();
+      if (permission === 'granted') {
+        notifyBtn.classList.add('active');
+        notifyBtn.title = 'Уведомления включены';
+        new Notification('Уведомления включены!', { body: 'Теперь вы узнаете, когда ИИ ответит.' });
+      }
+    } else {
+      new Notification('Уведомления уже включены', { body: 'Всё работает!' });
+    }
+  });
+}
+
+// Функция показа системного уведомления
+function showSystemNotification() {
+  if (document.hidden && Notification.permission === 'granted') {
+    new Notification('Ответ готов!', { 
+      body: 'ИИ закончил генерацию ответа в чате.',
+      icon: '/icon-192.png' 
+    });
+  }
+}
+
+// --- ФУНКЦИИ ВВОДА И ОТПРАВКИ ---
 function updateSendButtonState() {
   const hasText = userInput.value.trim().length > 0;
   const hasImage = !!getAttachedImage();
   sendBtn.disabled = !(hasText || hasImage);
 }
 
-// Слушаем ввод текста для активации кнопки
 userInput.addEventListener('input', updateSendButtonState);
 
-// Слушаем изменение превью картинки (через MutationObserver)
 const previewImg = document.getElementById('image-preview');
 if (previewImg) {
   const observer = new MutationObserver(() => {
@@ -54,7 +93,6 @@ if (previewImg) {
   observer.observe(previewImg, { attributes: true, attributeFilter: ['src'] });
 }
 
-// Слушаем клик по удалению картинки
 const removeImageBtn = document.getElementById('remove-image-btn');
 if (removeImageBtn) {
   removeImageBtn.addEventListener('click', () => {
@@ -62,7 +100,6 @@ if (removeImageBtn) {
   });
 }
 
-// Первичная инициализация кнопки при загрузке
 updateSendButtonState();
 
 if (tempSlider && tempValue) {
@@ -71,7 +108,6 @@ if (tempSlider && tempValue) {
   });
 }
 
-// Безопасный рендеринг текста с поддержкой тегов <think> и картинок
 function renderTextSafely(container, text, imageBase64 = null) {
   container.innerHTML = ''; 
   
@@ -203,16 +239,25 @@ chatForm.addEventListener('submit', async (e) => {
     console.log('[AI Chat] Отправка запроса на сервер...');
     
     const temperature = tempSlider ? parseFloat(tempSlider.value) : 0.7;
+    const authToken = localStorage.getItem('chat_auth_token') || 'dev-secret-token';
 
     const response = await fetch('/api/chat', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${authToken}` 
+      },
       body: JSON.stringify({ 
         messages: messagesContext, 
         model: selectedModel,
         temperature: temperature
       })
     });
+
+    if (response.status === 401) {
+      showToast('Ошибка авторизации. Введите токен в консоли: localStorage.setItem("chat_auth_token", "ваш_токен")');
+      throw new Error('Unauthorized');
+    }
 
     if (!response.ok) throw new Error(`Network response was not ok: ${response.status}`);
 
@@ -274,15 +319,112 @@ chatForm.addEventListener('submit', async (e) => {
     const textToSave = fullReasoning ? `<think>${fullReasoning}</think>\n${fullAIResponse}` : fullAIResponse;
     await saveMessage(dbInstance, { sender: aiName, text: textToSave, className: 'ai' });
     console.log('[AI Chat] Ответ успешно сохранен в IndexedDB');
+    
+    // ДОБАВЛЕНО: Показываем уведомление
+    showSystemNotification();
 
   } catch (err) {
     console.error('[AI Chat] Критическая ошибка соединения:', err);
     if (err.name === 'TypeError' && err.message.includes('fetch')) {
        aiContainer.textContent = 'Нет соединения с локальным сервером (Node.js). Проверьте, запущен ли он.';
        showToast('Сервер Node.js недоступен!');
+    } else if (err.message === 'Unauthorized') {
+       aiContainer.textContent = 'Ошибка авторизации. Проверьте токен.';
     } else {
        aiContainer.textContent = 'Произошла непредвиденная ошибка.';
        showToast('Ошибка приложения');
+    }
+  }
+});
+
+// --- PICTURE-IN-PICTURE ---
+const pipBtn = document.getElementById('pip-btn');
+const autoPipToggle = document.getElementById('auto-pip-toggle');
+let pipWindow = null;
+
+const screenChat = document.getElementById('screen-chat');
+
+async function openPiP() {
+  if (!('documentPictureInPicture' in window)) {
+    if (autoPipToggle) autoPipToggle.checked = false;
+    showToast('Ваш браузер не поддерживает Picture-in-Picture (нужен Chrome 116+)');
+    return;
+  }
+
+  if (pipWindow) return;
+
+  try {
+    pipWindow = await documentPictureInPicture.requestWindow({
+      width: 450,
+      height: 600,
+    });
+
+    const styles = [...document.styleSheets];
+    for (const styleSheet of styles) {
+      const style = document.createElement('style');
+      try {
+        style.textContent = [...styleSheet.cssRules].map(rule => rule.cssText).join('');
+      } catch {
+        const link = document.createElement('link');
+        link.rel = 'stylesheet';
+        link.href = styleSheet.href;
+        pipWindow.document.head.appendChild(link);
+        continue;
+      }
+      pipWindow.document.head.appendChild(style);
+    }
+
+    const baseStyle = document.createElement('style');
+    baseStyle.textContent = `
+      body { background: var(--bg-color); height: 100vh; display: flex; flex-direction: column; padding: 10px; overflow: hidden; margin: 0; }
+      #screen-chat { display: flex; flex-direction: column; height: 100%; }
+    `;
+    pipWindow.document.head.appendChild(baseStyle);
+
+    pipWindow.document.body.appendChild(screenChat); 
+    
+    if (pipBtn) {
+      pipBtn.textContent = '🔙';
+      pipBtn.title = 'Вернуть в основное окно';
+    }
+
+    pipWindow.document.getElementById('user-input').focus();
+
+    pipWindow.addEventListener('pagehide', () => {
+      document.getElementById('app').appendChild(screenChat);
+      
+      if (pipBtn) {
+        pipBtn.textContent = '🪟';
+        pipBtn.title = 'Вынести в отдельное окно';
+      }
+      pipWindow = null;
+      
+      document.getElementById('user-input').focus();
+    });
+
+  } catch (error) {
+    console.error('Ошибка PiP:', error);
+    if (autoPipToggle && autoPipToggle.checked) {
+      autoPipToggle.checked = false;
+      showToast('Браузер заблокировал автоматическое открытие. Нажмите 🪟 вручную.');
+    }
+  }
+}
+
+if (pipBtn) {
+  pipBtn.addEventListener('click', async () => {
+    if (pipWindow) {
+      pipWindow.close();
+    } else {
+      await openPiP();
+    }
+  });
+}
+
+document.addEventListener('visibilitychange', async () => {
+  if (autoPipToggle && autoPipToggle.checked) {
+    if (document.visibilityState === 'hidden' && !pipWindow) {
+      await openPiP();
     }
   }
 });
@@ -300,14 +442,12 @@ window.addEventListener('DOMContentLoaded', async () => {
     console.error('[AI Chat] Не удалось загрузить историю из IndexedDB', err);
   }
 
-  // --- РЕГИСТРАЦИЯ SERVICE WORKER (Только в production) ---
   if ('serviceWorker' in navigator) {
     if (process.env.NODE_ENV === 'production') {
       navigator.serviceWorker.register('/sw.js')
         .then(() => console.log('[AI Chat] Service Worker зарегистрирован (prod)'))
         .catch(err => console.error('[AI Chat] Ошибка SW:', err));
     } else {
-      // В dev-режиме удаляем старый SW, чтобы HMR работал корректно
       navigator.serviceWorker.getRegistrations().then(function(registrations) {
         for(let registration of registrations) {
           registration.unregister();
@@ -317,7 +457,6 @@ window.addEventListener('DOMContentLoaded', async () => {
     }
   }
   
-  // Проверяем состояние кнопки после загрузки
   updateSendButtonState();
 });
 
