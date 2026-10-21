@@ -4,7 +4,7 @@ import js from '@eslint/js';
 export default [
   js.configs.recommended,
   {
-    files: ['src/**/*.js', 'server.js', 'server/**/*.js'],
+    files: ['src/**/*.js', 'server/**/*.js'],
     languageOptions: {
       ecmaVersion: 'latest',
       sourceType: 'module',
@@ -19,6 +19,17 @@ export default [
       'semi': ['error', 'always'],
       'quotes': ['error', 'single'],
       'eqeqeq': ['error', 'always'],
+    },
+  },
+  {
+    // Отдельный блок для Service Worker (sw.js)
+    files: ['src/assets/sw.js'],
+    languageOptions: {
+      ecmaVersion: 'latest',
+      sourceType: 'module',
+      globals: {
+        ...globals.serviceworker, // Добавляет caches, fetch и т.д.
+      },
     },
   },
   {
@@ -39,12 +50,20 @@ export default [
       ecmaVersion: 'latest',
       sourceType: 'module',
       globals: {
-        ...globals.node,    // Для Buffer, process и т.д.
-        ...globals.browser, // ДОБАВЛЕНО: Для window в page.addInitScript
+        ...globals.node,    
+        ...globals.browser, 
       },
     },
   },
   {
-    ignores: ['dist/', 'playwright-report/', 'test-results/'],
+    // Игнорируем папки со сборкой и временные файлы IDE/агентов
+    ignores: [
+      'dist/',
+      'playwright-report/',
+      'test-results/',
+      'node_modules/',
+      '.gigacode_vsc/', // <--- ГЛАВНОЕ ИСПРАВЛЕНИЕ
+      '.vscode/'
+    ],
   }
 ];
