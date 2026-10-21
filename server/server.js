@@ -2,8 +2,8 @@ import http from 'http';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { config } from './server/config.js';
-import { streamWithFallback } from './server/fallback.js';
+import { config } from './config.js';
+import { streamWithFallback } from './fallback.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -122,7 +122,7 @@ const server = http.createServer(async (req, res) => {
   }
 
   // Раздача статики
-  let filePath = path.join(__dirname, 'dist', req.url === '/' ? 'index.html' : req.url.split('?')[0]);
+  let filePath = path.join(__dirname, '..', 'dist', req.url === '/' ? 'index.html' : req.url.split('?')[0]);
   const ext = path.extname(filePath);
   const contentType = MIME_TYPES[ext] || 'application/octet-stream';
 

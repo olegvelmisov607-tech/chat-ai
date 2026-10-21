@@ -15,7 +15,7 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: 'npm run build && node server.js',
+    command: 'npm run build && node server/server.js',
     url: 'http://localhost:3000',
     reuseExistingServer: !process.env.CI,
     timeout: 15 * 1000,

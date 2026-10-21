@@ -5,8 +5,8 @@
   "scripts": {
     "build": "webpack --mode production",
     "dev": "webpack serve --mode development",
-    "dev:server": "node server.js",
-    "start": "node server.js",
+    "dev:server": "node server/server.js",
+    "start": "node server/server.js",
     "lint": "eslint .",
     "test:e2e": "playwright test"
   },
