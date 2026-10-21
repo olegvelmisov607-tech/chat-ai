@@ -33,13 +33,14 @@ export default [
     },
   },
   {
-    // ДОБАВЛЕНО: Блок для E2E-тестов Playwright
+    // Блок для E2E-тестов Playwright
     files: ['**/*.spec.js', 'tests/**/*.js'],
     languageOptions: {
       ecmaVersion: 'latest',
       sourceType: 'module',
       globals: {
-        ...globals.node, // Включает Buffer, process и т.д.
+        ...globals.node,    // Для Buffer, process и т.д.
+        ...globals.browser, // ДОБАВЛЕНО: Для window в page.addInitScript
       },
     },
   },
