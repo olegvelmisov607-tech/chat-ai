@@ -1,5 +1,3 @@
-import { getFriendlyErrorMessage } from './utils.js'; // (создадим чуть позже)
-
 export async function* streamChatAPI({ messagesContext, model, temperature }) {
   const authToken = localStorage.getItem('chat_auth_token') || 'dev-secret-token';
 
