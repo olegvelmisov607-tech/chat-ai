@@ -28,7 +28,7 @@ export default [
       ecmaVersion: 'latest',
       sourceType: 'module',
       globals: {
-        ...globals.serviceworker, // Добавляет caches, fetch и т.д.
+        ...globals.serviceworker,
       },
     },
   },
@@ -56,13 +56,14 @@ export default [
     },
   },
   {
-    // Игнорируем папки со сборкой и временные файлы IDE/агентов
+    // Игнорируем папки со сборкой, документацией и временные файлы IDE/агентов
     ignores: [
       'dist/',
+      'docs/', // <--- ДОБАВЛЕНО: Игнорируем сгенерированную JSDoc документацию
       'playwright-report/',
       'test-results/',
       'node_modules/',
-      '.gigacode_vsc/', // <--- ГЛАВНОЕ ИСПРАВЛЕНИЕ
+      '.gigacode_vsc/',
       '.vscode/'
     ],
   }
