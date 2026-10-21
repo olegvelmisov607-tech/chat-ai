@@ -8,7 +8,6 @@ let breakerOpenUntil = 0;
 export async function* streamWithFallback({ model, messages, temperature, signal }) {
   const mapping = modelMap[model] || modelMap['qwen'];
   
-  // Проверяем, поддерживает ли облако этот тип запроса
   const isCloudSupported = mapping.cloud !== null;
   const isCloudAvailable = isCloudSupported && Date.now() > breakerOpenUntil && !!config.deepseek.apiKey;
 
@@ -48,7 +47,6 @@ export async function* streamWithFallback({ model, messages, temperature, signal
 
       yield { type: 'system_alert', message: `${reason} Переключено на локальную модель.` };
       
-      // Сообщаем фронту, что отвечает локальная модель
       yield { type: 'model_info', modelName: mapping.local }; 
       
       yield* streamOpenAICompat({
@@ -76,10 +74,8 @@ export async function* streamWithFallback({ model, messages, temperature, signal
       }
   }
 
-  // Сообщаем фронту, что отвечает локальная модель
   yield { type: 'model_info', modelName: mapping.local };
 
-  // Идем в Ollama
   yield* streamOpenAICompat({
     baseUrl: config.ollama.baseUrl,
     apiKey: null,

@@ -35,7 +35,7 @@ function isRateLimited(ip) {
 }
 
 const server = http.createServer(async (req, res) => {
-  // CORS (добавили Authorization)
+  // CORS
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
@@ -83,11 +83,26 @@ const server = http.createServer(async (req, res) => {
       try {
         const { messages, model, temperature } = JSON.parse(body);
 
-        const hasImages = messages.some(m => 
-          Array.isArray(m.content) && m.content.some(c => c.type === 'image_url')
-        );
+        // Проверяем наличие картинки ТОЛЬКО в последнем сообщении пользователя
+        const lastUserMessage = [...messages].reverse().find(m => m.role === 'user');
+        const hasImages = lastUserMessage && 
+                          Array.isArray(lastUserMessage.content) && 
+                          lastUserMessage.content.some(c => c.type === 'image_url');
 
         const routingModel = hasImages ? 'vision' : model;
+
+        // ИСПРАВЛЕНИЕ: Если выбрана НЕ Vision-модель, удаляем картинки из истории, 
+        // чтобы текстовые модели (qwen, deepseek-r1) не падали с ошибкой 500.
+        let finalMessages = messages;
+        if (!hasImages) {
+          finalMessages = messages.map(m => {
+            if (Array.isArray(m.content)) {
+              const textParts = m.content.filter(c => c.type === 'text').map(c => c.text).join(' ');
+              return { role: m.role, content: textParts };
+            }
+            return m;
+          });
+        }
 
         res.writeHead(200, {
           'Content-Type': 'text/event-stream',
@@ -97,7 +112,7 @@ const server = http.createServer(async (req, res) => {
         });
 
         for await (const chunk of streamWithFallback({ 
-          messages, 
+          messages: finalMessages, // Передаем очищенную историю
           model: routingModel, 
           temperature,
           signal: req.signal 
@@ -128,8 +143,9 @@ const server = http.createServer(async (req, res) => {
 
   fs.readFile(filePath, (err, content) => {
     if (err) {
+      // SPA-роутинг
       if (!ext) {
-        fs.readFile(path.join(__dirname, 'dist', 'index.html'), (err2, content2) => {
+        fs.readFile(path.join(__dirname, '..', 'dist', 'index.html'), (err2, content2) => {
           if (err2) {
             res.writeHead(404); res.end('Not Found');
           } else {

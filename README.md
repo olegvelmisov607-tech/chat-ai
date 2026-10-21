@@ -47,6 +47,17 @@
 * В `fallback.js` срабатывает проверка: `isCloudSupported = false` (DeepSeek не умеет картинки), поэтому запрос сразу уходит в Ollama (`gemma3:12b`).
 * `openai-compat.js` отключает стриминг (`stream: false`), ждет полный ответ от Ollama и эмулирует SSE-поток для клиента.
 
+## 📸 Скриншоты
+
+### Десктопный вид (Роутинг между Vision и текстовой моделью)
+![Десктопный вид](docs/desktop.png)
+
+### Мобильный вид (Адаптивная верстка)
+<img src="docs/mobile.png" width="300" alt="Мобильный вид">
+
+### Picture-in-Picture (Отдельное окно)
+![Picture-in-Picture](docs/pip.png)
+
 ## 🚀 Быстрый старт и Разработка
 
 1. Установите зависимости:

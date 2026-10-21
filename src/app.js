@@ -26,6 +26,10 @@ const routes = {
   '#settings': () => switchScreen('screen-settings'),
 };
 
+/**
+ * Переключает активный экран (SPA-роутинг).
+ * @param {string} screenId - ID DOM-элемента экрана (например, 'screen-chat').
+ */
 function switchScreen(screenId) {
   document.querySelectorAll('.screen').forEach(screen => {
     screen.classList.toggle('active', screen.id === screenId);
@@ -68,6 +72,13 @@ initNotifications();
 initPiP();
 
 // --- ОТПРАВКА СООБЩЕНИЙ ---
+/**
+ * Главный обработчик отправки сообщения.
+ * Собирает контекст, отправляет запрос через API, обрабатывает SSE-стрим и обновляет UI.
+ * 
+ * @param {Event} e - Событие submit формы.
+ * @returns {Promise<void>}
+ */
 chatForm.addEventListener('submit', async (e) => {
   e.preventDefault();
   
@@ -80,12 +91,14 @@ chatForm.addEventListener('submit', async (e) => {
   const temperature = tempSlider ? parseFloat(tempSlider.value) : 0.7;
   userInput.value = '';
 
+  // 1. Отрисовка и сохранение сообщения пользователя
   appendStaticMessage('Вы', text, 'user', imageBase64, chatMessages);
   await saveMessage(dbInstance, { sender: 'Вы', text, className: 'user', imageBase64 });
   
   clearAttachment(); 
   updateSendButtonState(userInput, sendBtn, false);
 
+  // 2. Формирование контекста
   const allMessages = await getAllMessages(dbInstance);
   const messagesContext = allMessages.map(m => {
     let content = m.text;
@@ -101,6 +114,7 @@ chatForm.addEventListener('submit', async (e) => {
     };
   });
 
+  // 3. Создание блока для ответа ИИ
   let aiName = selectedModel === 'qwen' ? 'Qwen' : 'DeepSeek';
   const aiContainer = createMessageElement(aiName, 'ai', chatMessages);
   
@@ -108,6 +122,7 @@ chatForm.addEventListener('submit', async (e) => {
   let fullReasoning = '';
 
   try {
+    // 4. Чтение стрима
     for await (const parsed of streamChatAPI({ messagesContext, model: selectedModel, temperature })) {
       if (parsed.type === 'model_info') {
         aiName = parsed.modelName;
@@ -137,6 +152,7 @@ chatForm.addEventListener('submit', async (e) => {
       }
     }
 
+    // 5. Сохранение ответа
     const textToSave = fullReasoning ? `<think>${fullReasoning}</think>\n${fullAIResponse}` : fullAIResponse;
     await saveMessage(dbInstance, { sender: aiName, text: textToSave, className: 'ai' });
     

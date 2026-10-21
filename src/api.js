@@ -1,3 +1,12 @@
+/**
+ * Отправляет запрос к бэкенду и возвращает асинхронный генератор чанков (SSE).
+ * 
+ * @param {Object} params - Параметры запроса.
+ * @param {Array<Object>} params.messagesContext - История сообщений в формате OpenAI.
+ * @param {string} params.model - Идентификатор выбранной модели (например, 'qwen', 'vision').
+ * @param {number} params.temperature - Температура генерации (креативность) от 0 до 1.
+ * @returns {AsyncGenerator<Object, void, unknown>} Асинхронный генератор, возвращающий распарсенные JSON-чанки.
+ */
 export async function* streamChatAPI({ messagesContext, model, temperature }) {
   const authToken = localStorage.getItem('chat_auth_token') || 'dev-secret-token';
 
@@ -10,7 +19,7 @@ export async function* streamChatAPI({ messagesContext, model, temperature }) {
     body: JSON.stringify({ 
       messages: messagesContext, 
       model: model,
-      temperature: temperature
+      temperature: temperature // <-- ДОБАВЛЕНО
     })
   });
 
@@ -41,7 +50,7 @@ export async function* streamChatAPI({ messagesContext, model, temperature }) {
       
       try {
         const parsed = JSON.parse(jsonStr);
-        yield parsed; // Отдаем распарсенный чанк наверх в app.js
+        yield parsed; 
       } catch (err) {
         console.warn('[AI Chat] Ошибка парсинга чанка:', err);
       }

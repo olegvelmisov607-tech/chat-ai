@@ -1,12 +1,11 @@
+// server/providers/openai-compat.js
 
 // Вспомогательная функция для эмуляции стриминга (когда stream: false)
 async function* emulateStream(text) {
   if (!text) return;
-  // Разбиваем по словам, чтобы сохранить пробелы
   const chunks = text.match(/\S+\s*/g) || [text];
   for (const chunk of chunks) {
     yield { type: 'content', text: chunk };
-    // Небольшая задержка для эффекта печатной машинки
     await new Promise(r => setTimeout(r, 20)); 
   }
 }
@@ -23,13 +22,21 @@ export async function* streamOpenAICompat({ baseUrl, apiKey, model, messages, te
   // Для Vision-моделей принудительно отключаем нативный стриминг
   const useStream = !hasImages;
 
-  // Формируем тело с температурой (если не передана — 0.7)
-  const bodyString = JSON.stringify({ 
-    model, 
-    messages, 
-    stream: useStream,
-    temperature: temperature !== undefined ? temperature : 0.7 
-  });
+  const requestBody = {
+    model,
+    messages,
+    stream: useStream
+  };
+
+  // ВАЖНО: Если это Ollama (порт 11434), не передаем temperature, 
+  // чтобы избежать ошибок 400/500 на локальных моделях.
+  const isOllama = baseUrl.includes('11434');
+  
+  if (!isOllama) {
+    requestBody.temperature = temperature !== undefined ? temperature : 0.7;
+  }
+
+  const bodyString = JSON.stringify(requestBody);
 
   const res = await fetch(`${baseUrl}/chat/completions`, {
     method: 'POST',
@@ -39,7 +46,15 @@ export async function* streamOpenAICompat({ baseUrl, apiKey, model, messages, te
   });
 
   if (!res.ok) {
-    const err = new Error(`HTTP_${res.status}`);
+    // Читаем ответ от Ollama, чтобы понять причину
+    let errDetails = '';
+    try {
+      const errJson = await res.json();
+      errDetails = JSON.stringify(errJson);
+    } catch (e) {
+      // ignore
+    }
+    const err = new Error(`HTTP_${res.status} ${errDetails}`);
     err.status = res.status;
     throw err;
   }
