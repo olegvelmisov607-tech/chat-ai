@@ -2,7 +2,7 @@ import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
   test: {
-    environment: 'jsdom', // эмуляция браузера для UI-модулей
+    environment: 'happy-dom', // эмуляция браузера для UI-модулей
     globals: true,        // чтобы использовать describe/it/expect без импортов
     setupFiles: ['./tests/setup.js'], // файл для полифилов (fake-indexeddb)
     

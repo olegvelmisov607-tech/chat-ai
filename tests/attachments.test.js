@@ -85,9 +85,11 @@ describe('attachments.js', () => {
     expect(els.previewContainer.classList.contains('hidden')).toBe(true);
   });
 
-  it('должен показывать alert при неверном формате файла', () => {
+it('должен показывать alert при неверном формате файла', () => {
+    // В happy-dom alert может не существовать, поэтому создаем заглушку
+    window.alert = () => {}; 
     const alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => {});
-    // Создаем текстовый файл вместо картинки
+    
     const badFile = new File(['hello'], 'test.txt', { type: 'text/plain' });
     
     Object.defineProperty(els.fileInput, 'files', { value: [badFile], configurable: true });
@@ -98,8 +100,10 @@ describe('attachments.js', () => {
   });
 
   it('должен показывать alert, если файл слишком большой', () => {
+    // В happy-dom alert может не существовать, поэтому создаем заглушку
+    window.alert = () => {};
     const alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => {});
-    // Создаем картинку, но "фейково" огромного размера
+    
     const bigFile = new File(['fake'], 'big.png', { type: 'image/png' });
     Object.defineProperty(bigFile, 'size', { value: 11 * 1024 * 1024 }); // 11 MB
     
