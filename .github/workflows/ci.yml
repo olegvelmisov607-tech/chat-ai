@@ -9,6 +9,10 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    
+    # Даем права на пуш изменений, чтобы экшен мог закоммитить бейдж в README
+    permissions:
+      contents: write
 
     steps:
     - name: Checkout code
@@ -26,15 +30,20 @@ jobs:
     - name: Run Linter
       run: npm run lint
 
-    # --- НОВЫЙ ШАГ: Запуск Unit-тестов с покрытием ---
-    # Запускаем ДО сборки, чтобы быстро узнать, есть ли ошибки в логике.
-    # Если покрытие будет ниже порога (70%), этот шаг упадет, и пайплайн остановится.
+    # --- Запуск Unit-тестов с покрытием ---
     - name: Run Unit Tests with Coverage
       run: npm run test:coverage
 
-    # --- НОВЫЙ ШАГ: Сохранение HTML-отчета покрытия ---
-    # Даже если тесты прошли, мы хотим видеть отчет. 
-    # В случае падения тестов (if: always()), отчет тоже сохранится, чтобы можно было проанализировать.
+    # --- Генерация и коммит бейджа покрытия ---
+    - name: Create Coverage Badge
+      uses: H3nSte1n/coverage-badge-creator@v2
+      with:
+        format: istanbul # Vitest генерирует json-summary в совместимом формате
+        commit: true     # Автоматически закоммитит изменения в README
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    # --- Сохранение HTML-отчета покрытия как артефакта ---
     - name: Upload Coverage Report
       uses: actions/upload-artifact@v4
       if: always() 

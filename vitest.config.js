@@ -19,7 +19,7 @@ export default defineConfig({
 
     coverage: {
       provider: 'v8',     // быстрый нативный сборщик покрытия
-      reporter: ['text', 'html', 'lcov'], // text — в консоль, html — красивый отчёт
+      reporter: ['text', 'html', 'lcov','json-summary'], // text — в консоль, html — красивый отчёт, json-summary - для бейджа
       reportsDirectory: './coverage',
       include: ['src/**/*.js'], // какие файлы анализировать
       
