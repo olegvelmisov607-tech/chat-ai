@@ -39,7 +39,8 @@ function appendTextWithCode(target, text) {
         const highlighted = hljs.highlight(code, { language }).value;
         codeEl.innerHTML = highlighted;
         codeEl.className = `hljs language-${language}`;
-      } catch (e) {
+      } catch {
+        // Если язык не найден, выводим как обычный текст
         codeEl.textContent = code;
       }
 
@@ -104,12 +105,10 @@ export function renderTextSafely(container, text, imageBase64 = null) {
 
   // Парсим теги <think>
   const parts = text.split(/(<\/?think>)/g);
-  let isThought = false;
   let currentTarget = contentWrapper;
 
   parts.forEach(part => {
     if (part === '<think>') {
-      isThought = true;
       const thoughtDiv = document.createElement('div');
       thoughtDiv.className = 'thought';
       const strong = document.createElement('strong');
@@ -119,7 +118,6 @@ export function renderTextSafely(container, text, imageBase64 = null) {
       currentTarget = thoughtDiv;
       contentWrapper.appendChild(thoughtDiv); 
     } else if (part === '</think>') {
-      isThought = false;
       currentTarget = contentWrapper;
     } else if (part) {
       // Внутри каждого куска ищем блоки кода и Markdown

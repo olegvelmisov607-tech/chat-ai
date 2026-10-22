@@ -4,7 +4,8 @@ import {
   renderTextSafely, 
   updateSendButtonState, 
   showToast, 
-  createMessageElement 
+  createMessageElement,
+  appendStaticMessage // <--- Добавлен импорт
 } from '../src/ui.js';
 
 describe('ui.js', () => {
@@ -65,6 +66,55 @@ describe('ui.js', () => {
       // (или удалился вместе с тегом, в зависимости от реализации DOMPurify)
       expect(container.textContent).not.toContain('<script>');
     });
+
+    // --- ТЕСТЫ ДЛЯ БЛОКОВ КОДА И MARKDOWN ---
+
+    it('должен создавать блок кода с кнопкой копирования при наличии ```', () => {
+      const container = document.createElement('div');
+      const text = 'Вот код:\n```javascript\nconsole.log("hello");\n```';
+      
+      renderTextSafely(container, text);
+      
+      // Проверяем, что создался блок кода
+      const codeWrapper = container.querySelector('.code-wrapper');
+      expect(codeWrapper).toBeTruthy();
+      
+      // Проверяем, что внутри есть тег pre и code
+      const pre = codeWrapper.querySelector('pre');
+      expect(pre).toBeTruthy();
+      
+      // Проверяем кнопку копирования
+      const copyBtn = codeWrapper.querySelector('.copy-code-btn');
+      expect(copyBtn).toBeTruthy();
+      expect(copyBtn.textContent).toBe('Копировать');
+    });
+
+    it('должен корректно обрабатывать незакрытый блок кода (стриминг)', () => {
+      const container = document.createElement('div');
+      // Блок кода открыт, но не закрыт (эмуляция стриминга)
+      const text = 'Вот код:\n```javascript\nconsole.log("hell';
+      
+      renderTextSafely(container, text);
+      
+      // Обертка с кнопкой не должна создаваться, пока блок не закрыт
+      expect(container.querySelector('.code-wrapper')).toBeNull();
+      
+      // Но тег pre и code должны быть
+      const pre = container.querySelector('pre');
+      expect(pre).toBeTruthy();
+      expect(pre.textContent).toContain('console.log');
+    });
+
+    it('должен обрабатывать Markdown (жирный текст)', () => {
+      const container = document.createElement('div');
+      const text = 'Это **важный** текст.';
+      
+      renderTextSafely(container, text);
+      
+      // Проверяем, что текст отрендерился (в тестах marked просто возвращает текст, 
+      // но мы проверяем, что он прошел через наш контейнер)
+      expect(container.textContent).toContain('Это важный текст.');
+    });
   });
 
   describe('showToast', () => {
@@ -93,6 +143,20 @@ describe('ui.js', () => {
       // Проверяем, что вернулся контейнер для текста
       expect(resultContainer).toBeInstanceOf(HTMLDivElement);
       expect(resultContainer.className).toBe('');
+    });
+  });
+
+  // --- НОВЫЙ ТЕСТ ДЛЯ ДОБИВАНИЯ ПОКРЫТИЯ ---
+  describe('appendStaticMessage', () => {
+    it('должен добавлять сообщение в контейнер чата', () => {
+      const chatContainer = document.createElement('div');
+      
+      appendStaticMessage('Вы', 'Тестовое сообщение', 'user', null, chatContainer);
+      
+      const message = chatContainer.querySelector('.message.user');
+      expect(message).toBeTruthy();
+      expect(message.textContent).toContain('Вы: ');
+      expect(message.textContent).toContain('Тестовое сообщение');
     });
   });
 });

@@ -51,7 +51,7 @@ export async function* streamOpenAICompat({ baseUrl, apiKey, model, messages, te
     try {
       const errJson = await res.json();
       errDetails = JSON.stringify(errJson);
-    } catch (e) {
+    } catch {
       // ignore
     }
     const err = new Error(`HTTP_${res.status} ${errDetails}`);

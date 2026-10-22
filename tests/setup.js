@@ -6,18 +6,21 @@ vi.mock('highlight.js', () => ({
   default: { highlight: (code) => ({ value: code }) }
 }));
 
-// Улучшенный мок marked (возвращает HTML как есть)
+// Улучшенный мок marked (имитируем базовый Markdown)
 vi.mock('marked', () => ({
   marked: {
-    parse: (text) => text 
+    parse: (text) => {
+      // Простейшая имитация Markdown: заменяем **текст** на <strong>текст</strong>
+      return text.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+    }
   }
 }));
 
-// Улучшенный мок DOMPurify (имитируем реальную очистку)
+// Улучшенный мок DOMPurify
 vi.mock('dompurify', () => ({
   default: {
     sanitize: (html) => {
-      // Простая имитация: удаляем теги script
+      // Удаляем только теги script
       return html.replace(/<script\b[^>]*>([\s\S]*?)<\/script>/gm, '');
     }
   }
