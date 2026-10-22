@@ -618,3 +618,114 @@ main#app {
   cursor: pointer;
   accent-color: #e3f2fd;
 }
+/* =========================================
+   БЛОКИ КОДА И ПОДСВЕТКА СИНТАКСИСА
+   ========================================= */
+.code-wrapper {
+  position: relative;
+  margin: 10px 0;
+  border-radius: 8px;
+  overflow: hidden;
+  background-color: #282c34; /* Темный фон как в VS Code */
+}
+
+.message-content pre {
+  margin: 0;
+  padding: 16px;
+  overflow-x: auto;
+  font-family: 'Consolas', 'Courier New', monospace;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.message-content pre code {
+  color: #abb2bf;
+  display: block;
+}
+
+/* Кнопка "Копировать" */
+.copy-code-btn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: #abb2bf;
+  padding: 4px 10px;
+  border-radius: 4px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  opacity: 0;
+  backdrop-filter: blur(4px);
+}
+
+.code-wrapper:hover .copy-code-btn {
+  opacity: 1;
+}
+
+.copy-code-btn:hover {
+  background: rgba(255, 255, 255, 0.2);
+  color: #ffffff;
+}
+
+/* --- ЦВЕТА ПОДСВЕТКИ (Тема One Dark) --- */
+.hljs-keyword { color: #c678dd; } /* const, let, function */
+.hljs-string { color: #98c379; } /* "строка" */
+.hljs-number { color: #d19a66; } /* 123 */
+.hljs-comment { color: #5c6370; font-style: italic; } /* // коммент */
+.hljs-function { color: #61afef; } /* console.log */
+.hljs-variable { color: #e06c75; } /* переменные */
+.hljs-title { color: #61afef; } 
+.hljs-params { color: #abb2bf; }
+.hljs-built_in { color: #e5c07b; }
+
+/* --- СТИЛИ ДЛЯ MARKDOWN (Списки, жирный текст, курсив) --- */
+.message-content p {
+  margin-bottom: 8px;
+}
+
+.message-content p:last-child {
+  margin-bottom: 0;
+}
+
+.message-content strong {
+  font-weight: 700;
+  color: var(--primary-dark);
+}
+
+.message-content em {
+  font-style: italic;
+}
+
+.message-content ul, 
+.message-content ol {
+  margin: 8px 0;
+  padding-left: 20px;
+}
+
+.message-content li {
+  margin-bottom: 4px;
+  position: relative;
+}
+
+.message-content ul li::marker {
+  color: var(--primary-color);
+}
+
+.message-content ol li::marker {
+  color: var(--primary-color);
+  font-weight: bold;
+}
+
+/* Заголовки (если модель их напишет) */
+.message-content h1, 
+.message-content h2, 
+.message-content h3 {
+  margin: 12px 0 8px;
+  color: var(--primary-dark);
+}
+
+.message-content h1 { font-size: 1.3em; }
+.message-content h2 { font-size: 1.2em; }
+.message-content h3 { font-size: 1.1em; }

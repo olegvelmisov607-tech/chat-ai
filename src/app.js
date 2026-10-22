@@ -1,3 +1,4 @@
+import 'highlight.js/styles/atom-one-dark.css'; // Или другая тема, например 'atom-one-dark.css'
 import './style.css';
 import { initDB, saveMessage, getAllMessages } from './db.js';
 import { initAttachments, getAttachedImage, clearAttachment } from './attachments.js'; // <--- Добавлен initAttachments

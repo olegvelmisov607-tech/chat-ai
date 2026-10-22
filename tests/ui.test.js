@@ -52,15 +52,18 @@ describe('ui.js', () => {
       expect(container.textContent).toContain('Ответ.');
     });
 
-    it('защищает от XSS (рендерит текст как TextNode, а не HTML)', () => {
+    it('защищает от XSS (вырезает script-теги)', () => {
       const container = document.createElement('div');
       const maliciousText = '<script>alert("hack")</script>';
       
       renderTextSafely(container, maliciousText);
       
-      // Внутри должен быть экранированный текст, а не реальный тег script
-      expect(container.innerHTML).toContain('&lt;script&gt;');
+      // Проверяем, что тега script нет в DOM
       expect(container.querySelector('script')).toBeNull();
+      
+      // Проверяем, что текст "alert("hack")" остался, но как обычный текст
+      // (или удалился вместе с тегом, в зависимости от реализации DOMPurify)
+      expect(container.textContent).not.toContain('<script>');
     });
   });
 
