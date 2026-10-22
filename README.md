@@ -1,4 +1,4 @@
-[![CI Pipeline](https://github.com/olegvelmisov607-tech/chat-ai/actions/workflows/ci.yml/badge.svg)](https://github.com/olegvelmisov607-tech/chat-ai/actions/workflows/ci.yml) $coverage$
+[![CI Pipeline](https://github.com/olegvelmisov607-tech/chat-ai/actions/workflows/ci.yml/badge.svg)](https://github.com/olegvelmisov607-tech/chat-ai/actions/workflows/ci.yml) ![](https://img.shields.io/badge/Coverage-73%25-5A7302.svg?prefix=$coverage$)
 # Local AI SPA+PWA Chat Client 🚀
 
 Современное автономное веб-приложение (SPA/PWA) для работы с большими языковыми моделями (DeepSeek Cloud и локальная Ollama). Архитектура построена на **чистом JavaScript (Vanilla ES6+) без использования UI-фреймворков** и **нативном Node.js** на бэкенде.
