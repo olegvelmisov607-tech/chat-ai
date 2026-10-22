@@ -1,70 +1,83 @@
 // --- СОСТОЯНИЕ ВЛОЖЕНИЯ ---
 let attachedImageBase64 = null;
 
-// --- DOM ЭЛЕМЕНТЫ ---
-const dropZone = document.getElementById('drop-zone');
-const attachBtn = document.getElementById('attach-btn');
-const fileInput = document.getElementById('file-input');
-const previewContainer = document.getElementById('image-preview-container');
-const previewImg = document.getElementById('image-preview');
-const removeBtn = document.getElementById('remove-image-btn');
-const textarea = document.getElementById('user-input'); // Исправлено на user-input
-
-// --- 1. КЛИК ПО СКРЕПКЕ ---
-if (attachBtn) {
-  attachBtn.addEventListener('click', () => fileInput.click());
+// Функция для получения актуальных DOM-элементов (ленивая инициализация)
+function getElements() {
+  return {
+    dropZone: document.getElementById('drop-zone'),
+    attachBtn: document.getElementById('attach-btn'),
+    fileInput: document.getElementById('file-input'),
+    previewContainer: document.getElementById('image-preview-container'),
+    previewImg: document.getElementById('image-preview'),
+    removeBtn: document.getElementById('remove-image-btn'),
+    textarea: document.getElementById('user-input')
+  };
 }
 
-// --- 2. ВЫБОР ФАЙЛА ЧЕРЕЗ ДИАЛОГ ---
-if (fileInput) {
-  fileInput.addEventListener('change', (e) => {
-    const file = e.target.files[0];
-    if (file) processFile(file);
-    fileInput.value = ''; // Сброс
-  });
-}
+// --- ИНИЦИАЛИЗАЦИЯ СЛУШАТЕЛЕЙ ---
+// Вызываем эту функцию один раз при старте приложения (в app.js)
+export function initAttachments() {
+  const els = getElements();
+  
+  if (els.attachBtn) {
+    els.attachBtn.addEventListener('click', () => els.fileInput.click());
+  }
 
-// --- 3. ВСТАВКА ИЗ БУФЕРА (Ctrl+V) ---
-if (textarea) {
-  textarea.addEventListener('paste', (e) => {
-    const items = e.clipboardData.items;
-    for (const item of items) {
-      if (item.type.indexOf('image') !== -1) {
-        const file = item.getAsFile();
-        if (file) processFile(file);
-        e.preventDefault(); // Не вставляем бинарный мусор в текст
-        break;
-      }
-    }
-  });
-}
-
-// --- 4. DRAG-N-DROP ---
-if (dropZone) {
-  ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
-    dropZone.addEventListener(eventName, (e) => {
-      e.preventDefault();
-      e.stopPropagation();
+  if (els.fileInput) {
+    els.fileInput.addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (file) processFile(file);
+      els.fileInput.value = ''; 
     });
-  });
+  }
 
-  dropZone.addEventListener('dragenter', () => dropZone.classList.add('drag-over'));
-  dropZone.addEventListener('dragover', () => dropZone.classList.add('drag-over'));
-  dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+  if (els.textarea) {
+    els.textarea.addEventListener('paste', (e) => {
+      const items = e.clipboardData.items;
+      for (const item of items) {
+        if (item.type.indexOf('image') !== -1) {
+          const file = item.getAsFile();
+          if (file) processFile(file);
+          e.preventDefault(); 
+          break;
+        }
+      }
+    });
+  }
 
-  dropZone.addEventListener('drop', (e) => {
-    dropZone.classList.remove('drag-over');
-    const file = e.dataTransfer.files[0];
-    if (file && file.type.startsWith('image/')) {
-      processFile(file);
-    }
-  });
+  if (els.dropZone) {
+    ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+      els.dropZone.addEventListener(eventName, (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+      });
+    });
+
+    els.dropZone.addEventListener('dragenter', () => els.dropZone.classList.add('drag-over'));
+    els.dropZone.addEventListener('dragover', () => els.dropZone.classList.add('drag-over'));
+    els.dropZone.addEventListener('dragleave', () => els.dropZone.classList.remove('drag-over'));
+
+    els.dropZone.addEventListener('drop', (e) => {
+      els.dropZone.classList.remove('drag-over');
+      const file = e.dataTransfer.files[0];
+      if (file && file.type.startsWith('image/')) {
+        processFile(file);
+      }
+    });
+  }
+
+  if (els.removeBtn) {
+    els.removeBtn.addEventListener('click', () => {
+      clearAttachment();
+    });
+  }
 }
 
-// --- 5. ОБРАБОТКА ФАЙЛА (FileReader) ---
+// --- ОБРАБОТКА ФАЙЛА (FileReader) ---
 function processFile(file) {
   const MAX_SIZE = 10 * 1024 * 1024; // 10MB
   const ALLOWED = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+  const els = getElements();
 
   if (!ALLOWED.includes(file.type)) {
     alert('Поддерживаются только изображения (JPEG, PNG, WEBP, GIF).');
@@ -77,18 +90,11 @@ function processFile(file) {
 
   const reader = new FileReader();
   reader.onload = (e) => {
-    attachedImageBase64 = e.target.result; // data:image/jpeg;base64,...
-    previewImg.src = attachedImageBase64;
-    previewContainer.classList.remove('hidden');
+    attachedImageBase64 = e.target.result; 
+    if (els.previewImg) els.previewImg.src = attachedImageBase64;
+    if (els.previewContainer) els.previewContainer.classList.remove('hidden');
   };
   reader.readAsDataURL(file);
-}
-
-// --- 6. УДАЛЕНИЕ ПРЕВЬЮ ---
-if (removeBtn) {
-  removeBtn.addEventListener('click', () => {
-    clearAttachment();
-  });
 }
 
 // --- ЭКСПОРТ ФУНКЦИЙ ДЛЯ APP.JS ---
@@ -98,6 +104,7 @@ export function getAttachedImage() {
 
 export function clearAttachment() {
   attachedImageBase64 = null;
-  if (previewImg) previewImg.src = '';
-  if (previewContainer) previewContainer.classList.add('hidden');
+  const els = getElements();
+  if (els.previewImg) els.previewImg.removeAttribute('src'); 
+  if (els.previewContainer) els.previewContainer.classList.add('hidden');
 }

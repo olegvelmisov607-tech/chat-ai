@@ -1,0 +1,1 @@
+import 'fake-indexeddb/auto'; // Глобальный полифил для IndexedDB

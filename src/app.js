@@ -1,6 +1,6 @@
 import './style.css';
 import { initDB, saveMessage, getAllMessages } from './db.js';
-import { getAttachedImage, clearAttachment } from './attachments.js';
+import { initAttachments, getAttachedImage, clearAttachment } from './attachments.js'; // <--- Добавлен initAttachments
 import { renderTextSafely, createMessageElement, appendStaticMessage, showToast, updateSendButtonState } from './ui.js';
 import { streamChatAPI } from './api.js';
 import { initNotifications, showSystemNotification } from './features/notifications.js';
@@ -68,6 +68,7 @@ if (tempSlider && tempValue) {
 updateSendButtonState(userInput, sendBtn, !!getAttachedImage());
 
 // --- ИНИЦИАЛИЗАЦИЯ ФИЧ ---
+initAttachments(); // <--- ДОБАВЛЕНО: инициализация обработчиков файлов
 initNotifications();
 initPiP();
 
