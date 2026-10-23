@@ -28,11 +28,12 @@ export function initNotifications() {
   });
 }
 
-// Экспортируем функцию, чтобы вызывать её при завершении генерации
-export function showSystemNotification() {
-  if (document.hidden && Notification.permission === 'granted') {
-    new Notification('Ответ готов!', { 
-      body: 'ИИ закончил генерацию ответа в чате.',
+// Экспортируем функцию для системных уведомлений
+export function showSystemNotification(title = 'Ответ готов!', body = 'ИИ закончил генерацию ответа в чате.') {
+  // Убрали проверку document.hidden, чтобы уведомление выскакивало сразу
+  if (Notification.permission === 'granted') {
+    new Notification(title, { 
+      body: body,
       icon: '/icon-192.png' 
     });
   }

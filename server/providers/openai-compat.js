@@ -10,7 +10,9 @@ async function* emulateStream(text) {
   }
 }
 
-export async function* streamOpenAICompat({ baseUrl, apiKey, model, messages, temperature, signal }) {
+export async function* streamOpenAICompat({ 
+  baseUrl, apiKey, model, messages, temperature, signal, tools 
+}) {
   const headers = { 'Content-Type': 'application/json; charset=utf-8' };
   if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`;
 
@@ -27,6 +29,11 @@ export async function* streamOpenAICompat({ baseUrl, apiKey, model, messages, te
     messages,
     stream: useStream
   };
+
+  // Добавляем инструменты, если они переданы
+  if (tools && tools.length > 0) {
+    requestBody.tools = tools;
+  }
 
   // ВАЖНО: Если это Ollama (порт 11434), не передаем temperature, 
   // чтобы избежать ошибок 400/500 на локальных моделях.
@@ -46,7 +53,6 @@ export async function* streamOpenAICompat({ baseUrl, apiKey, model, messages, te
   });
 
   if (!res.ok) {
-    // Читаем ответ от Ollama, чтобы понять причину
     let errDetails = '';
     try {
       const errJson = await res.json();
@@ -59,21 +65,31 @@ export async function* streamOpenAICompat({ baseUrl, apiKey, model, messages, te
     throw err;
   }
 
-  // ВЕТКА 1: Эмуляция стриминга (Vision)
+  // ВЕТКА 1: Эмуляция стриминга (Vision или не-стриминговые запросы)
   if (!useStream) {
     const data = await res.json();
-    const content = data.choices?.[0]?.message?.content || '';
-    const reasoning = data.choices?.[0]?.message?.reasoning_content || '';
+    const message = data.choices?.[0]?.message || {};
     
-    if (reasoning) yield { type: 'reasoning', text: reasoning };
-    yield* emulateStream(content);
+    // Проверяем на наличие tool_calls в нестриминговом ответе
+    if (message.tool_calls && message.tool_calls.length > 0) {
+      for (const tc of message.tool_calls) {
+        yield { type: 'tool_call', toolCall: tc };
+      }
+      return;
+    }
+
+    if (message.reasoning_content) yield { type: 'reasoning', text: message.reasoning_content };
+    yield* emulateStream(message.content || '');
     return;
   }
 
-  // ВЕТКА 2: Нативный стриминг (Текст)
+  // ВЕТКА 2: Нативный стриминг (Текст и Tool Calling)
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
   let buffer = '';
+  
+  // Для сборки tool_calls, которые приходят по частям
+  let currentToolCall = null;
 
   while (true) {
     const { done, value } = await reader.read();
@@ -87,7 +103,11 @@ export async function* streamOpenAICompat({ baseUrl, apiKey, model, messages, te
       const trimmed = line.trim();
       if (!trimmed || !trimmed.startsWith('data: ')) continue;
       const dataStr = trimmed.slice(6);
-      if (dataStr === '[DONE]') return;
+      
+      if (dataStr === '[DONE]') {
+        if (currentToolCall) yield { type: 'tool_call', toolCall: currentToolCall };
+        return;
+      }
 
       try {
         const data = JSON.parse(dataStr);
@@ -99,6 +119,26 @@ export async function* streamOpenAICompat({ baseUrl, apiKey, model, messages, te
         }
         if (delta.content) {
           yield { type: 'content', text: delta.content };
+        }
+        
+        // Парсинг Tool Calls
+        if (delta.tool_calls && delta.tool_calls.length > 0) {
+          const tc = delta.tool_calls[0]; // Берем первый, так как обычно вызывается одна функция
+          
+          if (tc.id) {
+            // Начало нового вызова инструмента
+            currentToolCall = {
+              id: tc.id,
+              type: 'function',
+              function: { 
+                name: tc.function.name, 
+                arguments: tc.function.arguments || '' 
+              }
+            };
+          } else if (currentToolCall && tc.function?.arguments) {
+            // Дописываем аргументы, если они приходят фрагментами
+            currentToolCall.function.arguments += tc.function.arguments;
+          }
         }
       } catch {
         // Игнорируем неполные чанки

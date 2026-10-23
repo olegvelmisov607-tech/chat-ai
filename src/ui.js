@@ -3,18 +3,14 @@ import hljs from 'highlight.js';
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
 
-// Хелпер для парсинга текста и поиска блоков кода
 function appendTextWithCode(target, text) {
-  // Регулярка ищет ```язык ... код ... ```
   const codeBlockRegex = /```(\w*)\n?([\s\S]*?)(```|$)/g;
   let lastIndex = 0;
   let match;
 
   while ((match = codeBlockRegex.exec(text)) !== null) {
-    // Добавляем обычный текст (с Markdown) до блока кода
     const textBefore = text.substring(lastIndex, match.index);
     if (textBefore) {
-      // --- МАГИЯ MARKDOWN ---
       const html = marked.parse(textBefore);
       const cleanHtml = DOMPurify.sanitize(html);
       
@@ -34,17 +30,14 @@ function appendTextWithCode(target, text) {
     const codeEl = document.createElement('code');
 
     if (isClosed) {
-      // Блок закрыт — подсвечиваем синтаксис
       try {
         const highlighted = hljs.highlight(code, { language }).value;
         codeEl.innerHTML = highlighted;
         codeEl.className = `hljs language-${language}`;
       } catch {
-        // Если язык не найден, выводим как обычный текст
         codeEl.textContent = code;
       }
 
-      // Создаем обертку и кнопку "Копировать"
       const wrapper = document.createElement('div');
       wrapper.className = 'code-wrapper';
 
@@ -62,7 +55,6 @@ function appendTextWithCode(target, text) {
       wrapper.appendChild(pre);
       target.appendChild(wrapper);
     } else {
-      // Блок еще не закрыт (идет стриминг) — выводим как обычный текст
       codeEl.textContent = code;
       codeEl.className = `hljs language-${language}`;
       pre.appendChild(codeEl);
@@ -70,12 +62,9 @@ function appendTextWithCode(target, text) {
     }
     
     lastIndex = codeBlockRegex.lastIndex;
-    
-    // Если блок не закрыт, прерываем цикл и ждем следующий чанк
     if (!isClosed) break;
   }
 
-  // Добавляем остаток текста после последнего блока кода
   const textAfter = text.substring(lastIndex);
   if (textAfter) {
     const html = marked.parse(textAfter);
@@ -103,7 +92,6 @@ export function renderTextSafely(container, text, imageBase64 = null) {
 
   if (!text) return;
 
-  // Парсим теги <think>
   const parts = text.split(/(<\/?think>)/g);
   let currentTarget = contentWrapper;
 
@@ -120,7 +108,6 @@ export function renderTextSafely(container, text, imageBase64 = null) {
     } else if (part === '</think>') {
       currentTarget = contentWrapper;
     } else if (part) {
-      // Внутри каждого куска ищем блоки кода и Markdown
       appendTextWithCode(currentTarget, part);
     }
   });
@@ -148,7 +135,6 @@ export function appendStaticMessage(sender, text, className, imageBase64 = null,
   chatMessagesContainer.scrollTop = chatMessagesContainer.scrollHeight;
 }
 
-// --- УВЕДОМЛЕНИЯ (TOAST) ---
 export function showToast(message) {
   const toast = document.createElement('div');
   toast.className = 'toast';
@@ -161,8 +147,67 @@ export function showToast(message) {
   }, 4000);
 }
 
-// --- УПРАВЛЕНИЕ КНОПКОЙ ОТПРАВКИ ---
 export function updateSendButtonState(userInput, sendBtn, hasImage) {
   const hasText = userInput.value.trim().length > 0;
   sendBtn.disabled = !(hasText || hasImage);
+}
+
+// --- ИСТОЧНИКИ В СТИЛЕ GEMINI ---
+export function renderSources(container, sources) {
+  if (!sources || sources.length === 0) return;
+
+  const oldSources = container.querySelector('.sources-container');
+  if (oldSources) oldSources.remove();
+
+  const sourcesWrapper = document.createElement('div');
+  sourcesWrapper.className = 'sources-container';
+
+  const title = document.createElement('div');
+  title.className = 'sources-title';
+  title.textContent = 'Источники';
+  sourcesWrapper.appendChild(title);
+
+  const grid = document.createElement('div');
+  grid.className = 'sources-grid';
+
+  sources.forEach(s => {
+    const a = document.createElement('a');
+    a.href = s.url;
+    a.target = '_blank';
+    a.rel = 'noopener noreferrer';
+    a.className = 'source-card';
+
+    let domain = '';
+    try {
+      domain = new URL(s.url).hostname.replace('www.', '');
+    } catch (e) {
+      domain = 'Сайт';
+    }
+
+    const favicon = document.createElement('img');
+    favicon.className = 'source-favicon';
+    favicon.src = `https://www.google.com/s2/favicons?domain=${domain}&sz=32`;
+    favicon.alt = '';
+    
+    const info = document.createElement('div');
+    info.className = 'source-info';
+    
+    const domainEl = document.createElement('span');
+    domainEl.className = 'source-domain';
+    domainEl.textContent = domain;
+    
+    const titleEl = document.createElement('span');
+    titleEl.className = 'source-title';
+    titleEl.textContent = DOMPurify.sanitize(s.title || s.url);
+
+    info.appendChild(domainEl);
+    info.appendChild(titleEl);
+
+    a.appendChild(favicon);
+    a.appendChild(info);
+    grid.appendChild(a);
+  });
+
+  sourcesWrapper.appendChild(grid);
+  container.appendChild(sourcesWrapper);
 }

@@ -1,16 +1,15 @@
-import 'highlight.js/styles/atom-one-dark.css'; // Или другая тема, например 'atom-one-dark.css'
+import 'highlight.js/styles/atom-one-dark.css';
 import './style.css';
 import { initDB, saveMessage, getAllMessages } from './db.js';
-import { initAttachments, getAttachedImage, clearAttachment } from './attachments.js'; // <--- Добавлен initAttachments
-import { renderTextSafely, createMessageElement, appendStaticMessage, showToast, updateSendButtonState } from './ui.js';
-import { streamChatAPI } from './api.js';
+import { initAttachments, getAttachedImage, clearAttachment } from './attachments.js';
+import { renderTextSafely, createMessageElement, appendStaticMessage, showToast, updateSendButtonState, renderSources } from './ui.js';
+import { streamChatAPI, fetchBudgetStatus } from './api.js';
 import { initNotifications, showSystemNotification } from './features/notifications.js';
 import { initPiP } from './features/pip.js';
 
 let dbInstance = null;
 let hasShownFallbackAlert = false;
 
-// --- DOM ЭЛЕМЕНТЫ ---
 const chatForm = document.getElementById('chat-form');
 const userInput = document.getElementById('user-input');
 const chatMessages = document.getElementById('chat-messages');
@@ -20,17 +19,13 @@ const tempValue = document.getElementById('temp-value');
 const sendBtn = document.getElementById('send-btn');
 const previewImg = document.getElementById('image-preview');
 const removeImageBtn = document.getElementById('remove-image-btn');
+const budgetIndicator = document.getElementById('budget-indicator');
 
-// --- РОУТИНГ ---
 const routes = {
   '#chat': () => switchScreen('screen-chat'),
   '#settings': () => switchScreen('screen-settings'),
 };
 
-/**
- * Переключает активный экран (SPA-роутинг).
- * @param {string} screenId - ID DOM-элемента экрана (например, 'screen-chat').
- */
 function switchScreen(screenId) {
   document.querySelectorAll('.screen').forEach(screen => {
     screen.classList.toggle('active', screen.id === screenId);
@@ -44,7 +39,24 @@ function handleRoute() {
 
 window.addEventListener('hashchange', handleRoute);
 
-// --- UI EVENTS ---
+async function updateBudgetUI() {
+  if (!budgetIndicator) return;
+  try {
+    const status = await fetchBudgetStatus();
+    budgetIndicator.textContent = `☁️ ${status.used}/${status.limit}`;
+    budgetIndicator.title = `Осталось облачных запросов сегодня: ${status.remaining}`;
+    
+    if (!status.allowed) {
+      budgetIndicator.style.background = 'rgba(255, 0, 0, 0.3)';
+      budgetIndicator.title = 'Лимит исчерпан. Работает локальная модель.';
+    } else {
+      budgetIndicator.style.background = 'rgba(255, 255, 255, 0.1)';
+    }
+  } catch (e) {
+    console.warn('Не удалось загрузить статус бюджета');
+  }
+}
+
 userInput.addEventListener('input', () => updateSendButtonState(userInput, sendBtn, !!getAttachedImage()));
 
 if (previewImg) {
@@ -68,19 +80,10 @@ if (tempSlider && tempValue) {
 
 updateSendButtonState(userInput, sendBtn, !!getAttachedImage());
 
-// --- ИНИЦИАЛИЗАЦИЯ ФИЧ ---
-initAttachments(); // <--- ДОБАВЛЕНО: инициализация обработчиков файлов
+initAttachments();
 initNotifications();
 initPiP();
 
-// --- ОТПРАВКА СООБЩЕНИЙ ---
-/**
- * Главный обработчик отправки сообщения.
- * Собирает контекст, отправляет запрос через API, обрабатывает SSE-стрим и обновляет UI.
- * 
- * @param {Event} e - Событие submit формы.
- * @returns {Promise<void>}
- */
 chatForm.addEventListener('submit', async (e) => {
   e.preventDefault();
   
@@ -93,14 +96,12 @@ chatForm.addEventListener('submit', async (e) => {
   const temperature = tempSlider ? parseFloat(tempSlider.value) : 0.7;
   userInput.value = '';
 
-  // 1. Отрисовка и сохранение сообщения пользователя
   appendStaticMessage('Вы', text, 'user', imageBase64, chatMessages);
   await saveMessage(dbInstance, { sender: 'Вы', text, className: 'user', imageBase64 });
   
   clearAttachment(); 
   updateSendButtonState(userInput, sendBtn, false);
 
-  // 2. Формирование контекста
   const allMessages = await getAllMessages(dbInstance);
   const messagesContext = allMessages.map(m => {
     let content = m.text;
@@ -116,29 +117,37 @@ chatForm.addEventListener('submit', async (e) => {
     };
   });
 
-  // 3. Создание блока для ответа ИИ
   let aiName = selectedModel === 'qwen' ? 'Qwen' : 'DeepSeek';
   const aiContainer = createMessageElement(aiName, 'ai', chatMessages);
   
   let fullAIResponse = '';
   let fullReasoning = '';
+  let searchSources = null;
 
   try {
-    // 4. Чтение стрима
     for await (const parsed of streamChatAPI({ messagesContext, model: selectedModel, temperature })) {
       if (parsed.type === 'model_info') {
         aiName = parsed.modelName;
         const label = aiContainer.parentElement.querySelector('strong');
         if (label) label.textContent = `${aiName}: `;
       } else if (parsed.type === 'system_alert') {
-        if (!hasShownFallbackAlert) {
-          showToast(parsed.message);
-          hasShownFallbackAlert = true;
+        // Тосты показываем всегда
+        showToast(parsed.message);
+        
+        // Системные уведомления для бюджета
+        if (parsed.message.includes('лимит облачных запросов')) {
+          showSystemNotification(
+            'Бюджет исчерпан 💸', 
+            'Дневной лимит облачных запросов закончился. Переключаюсь на локальную модель.'
+          );
         }
       } else if (parsed.type === 'error') {
         showToast(`⚠️ ${parsed.message}`);
         aiContainer.textContent = `Ошибка: ${parsed.message}`;
         return;
+      } else if (parsed.type === 'sources') {
+        // Просто сохраняем, НЕ рендерим (чтобы стриминг не стирал)
+        searchSources = parsed.data;
       } else if (parsed.type === 'reasoning') {
         fullReasoning += parsed.text;
         renderTextSafely(aiContainer, `<think>${fullReasoning}</think>${fullAIResponse}`);
@@ -154,11 +163,18 @@ chatForm.addEventListener('submit', async (e) => {
       }
     }
 
-    // 5. Сохранение ответа
-    const textToSave = fullReasoning ? `<think>${fullReasoning}</think>\n${fullAIResponse}` : fullAIResponse;
+    // 5. Сохранение и рендер источников ПОСЛЕ стрима
+    let textToSave = fullReasoning ? `<think>${fullReasoning}</think>\n${fullAIResponse}` : fullAIResponse;
+    
+    if (searchSources && searchSources.length > 0) {
+      renderSources(aiContainer, searchSources);
+      textToSave += '\n\n**Источники:**\n' + searchSources.map(s => `- [${s.title}](${s.url})`).join('\n');
+    }
+
     await saveMessage(dbInstance, { sender: aiName, text: textToSave, className: 'ai' });
     
-    showSystemNotification();
+    updateBudgetUI(); // Обновляем счетчик бюджета, но нотификацию не шлем
+   
 
   } catch (err) {
     console.error('[AI Chat] Критическая ошибка:', err);
@@ -174,9 +190,10 @@ chatForm.addEventListener('submit', async (e) => {
   }
 });
 
-// --- BOOTSTRAP ---
 window.addEventListener('DOMContentLoaded', async () => {
   handleRoute();
+  updateBudgetUI();
+
   try {
     dbInstance = await initDB();
     const history = await getAllMessages(dbInstance);

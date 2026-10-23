@@ -1,87 +1,132 @@
 import { config, modelMap } from './config.js';
 import { streamOpenAICompat } from './providers/openai-compat.js';
+import { streamYandexSearch } from './providers/yandex-search.js';
+
+const TOOLS = [{
+  type: 'function',
+  function: {
+    name: 'web_search',
+    description: 'Ищет актуальную информацию в интернете. Используй, если нужны свежие данные, новости или ты не уверен в ответе.',
+    parameters: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: 'Поисковый запрос' }
+      },
+      required: ['query']
+    }
+  }
+}];
 
 let cloudFailures = 0;
 const FAILS_TO_OPEN = 2;
 let breakerOpenUntil = 0;
 
-export async function* streamWithFallback({ model, messages, temperature, signal }) {
+export async function* streamWithFallback({ model, messages, temperature, signal, forceLocal = false }) {
   const mapping = modelMap[model] || modelMap['qwen'];
   
   const isCloudSupported = mapping.cloud !== null;
-  const isCloudAvailable = isCloudSupported && Date.now() > breakerOpenUntil && !!config.deepseek.apiKey;
+  const isCloudAvailable = !forceLocal && isCloudSupported && Date.now() > breakerOpenUntil && !!config.deepseek.apiKey;
 
+  async function* runLLM(baseUrl, apiKey, llmModel, msgs, allowTools = true) {
+    let toolCallData = null;
+    let hasYieldedContent = false;
+
+    for await (const chunk of streamOpenAICompat({
+      baseUrl, apiKey, model: llmModel, messages: msgs, temperature, signal,
+      tools: allowTools ? TOOLS : undefined 
+    })) {
+      if (chunk.type === 'tool_call') {
+        toolCallData = chunk.toolCall;
+        break; 
+      }
+      if (chunk.type === 'content' || chunk.type === 'reasoning') {
+        hasYieldedContent = true;
+        yield chunk;
+      }
+    }
+
+    if (toolCallData) {
+      let query = 'unknown';
+      try {
+        query = JSON.parse(toolCallData.function.arguments).query;
+      } catch (e) {
+        // JSON parse failed, query stays as default value
+      }
+
+      yield { type: 'system_alert', message: `🔍 Ищу в интернете: "${query}"...` };
+
+      let searchResultText = '';
+      let searchSources = [];
+      
+      try {
+        for await (const sChunk of streamYandexSearch({
+          query, folderId: config.yandexSearch.folderId, apiKey: config.yandexSearch.apiKey, signal
+        })) {
+          if (sChunk.type === 'sources') searchSources = sChunk.data;
+          if (sChunk.type === 'content') searchResultText += sChunk.text;
+        }
+      } catch (e) {
+        searchResultText = `Ошибка поиска: ${e.message}`;
+      }
+
+      if (searchSources.length > 0) {
+        yield { type: 'sources', data: searchSources };
+      }
+
+      // ВАЖНО: Добавляем строгий системный промпт для ВТОРОГО прохода
+      const secondMessages = [
+        ...msgs,
+        { role: 'assistant', content: null, tool_calls: [toolCallData] },
+        { 
+          role: 'system', 
+          content: 'Вот результаты поиска в интернете. Твоя задача — внимательно прочитать их и написать краткий, прямой ответ пользователю. Выведи конкретные факты (например, температуру воздуха, погодные условия). НЕ ПИШИ инструкции, НЕ ПИШИ ссылки на сайты (система покажет их отдельно), НЕ ГОВОРИ "я могу найти". Просто возьми данные из текста ниже и ответь ими.' 
+        },
+        { role: 'tool', tool_call_id: toolCallData.id, content: searchResultText }
+      ];
+
+      // Второй проход (tools = false, чтобы не зациклилась)
+      yield* runLLM(baseUrl, apiKey, llmModel, secondMessages, false); 
+      return;
+    }
+
+    if (hasYieldedContent) return;
+  }
+
+  // 1. Пробуем Облако
   if (isCloudAvailable) {
     try {
-      yield* streamOpenAICompat({
-        baseUrl: config.deepseek.baseUrl,
-        apiKey: config.deepseek.apiKey,
-        model: mapping.cloud,
-        messages,
-        temperature,
-        signal
-      });
+      yield* runLLM(config.deepseek.baseUrl, config.deepseek.apiKey, mapping.cloud, messages, true);
       cloudFailures = 0;
       return;
     } catch (err) {
       if (err.status === 401 || err.status === 403) throw err;
-      
       cloudFailures++;
-      if (cloudFailures >= FAILS_TO_OPEN) {
-        breakerOpenUntil = Date.now() + 30000;
-        console.warn('[Fallback] Cloud circuit breaker opened for 30s');
-      }
+      if (cloudFailures >= FAILS_TO_OPEN) breakerOpenUntil = Date.now() + 30000;
       
-      console.warn(`[Fallback] Cloud failed (${err.message}). Switching to local...`);
-      
-      let reason = 'Облачный API временно недоступен.';
-      if (err.message === 'fetch failed') {
-        reason = 'Нет соединения с интернетом или серверы DeepSeek заблокированы.';
-      } else if (err.message === 'HTTP_402' || err.message === 'HTTP_400') {
-        reason = 'Проблема с балансом или ключом DeepSeek.';
-      } else if (err.message === 'HTTP_429') {
-        reason = 'Превышен лимит запросов к DeepSeek.';
-      } else if (err.message.startsWith('HTTP_5')) {
-        reason = 'Ошибка на стороне серверов DeepSeek.';
-      }
-
-      yield { type: 'system_alert', message: `${reason} Переключено на локальную модель.` };
-      
-      yield { type: 'model_info', modelName: mapping.local }; 
-      
-      yield* streamOpenAICompat({
-        baseUrl: config.ollama.baseUrl,
-        apiKey: null,
-        model: mapping.local,
-        messages,
-        temperature,
-        signal
-      });
-      return;
+      yield { type: 'system_alert', message: `⚠️ Облако недоступно (${err.message}). Переход на локальную модель.` };
     }
-  } else {
-      let reason = '';
-      if (!isCloudSupported) {
-        reason = 'Анализ изображений доступен только на локальной модели.';
-      } else if (!config.deepseek.apiKey) {
-        reason = 'API-ключ DeepSeek не найден.';
-      } else {
-        reason = 'Серверы DeepSeek временно недоступны (сработал Circuit Breaker).';
-      }
-      
-      if (isCloudSupported) {
-        yield { type: 'system_alert', message: `${reason} Переключено на локальную модель.` };
-      }
   }
 
+  // 2. Локальная модель (Ollama)
   yield { type: 'model_info', modelName: mapping.local };
+  
+  let localMessages = [...messages];
+  
+  if (forceLocal) {
+    localMessages.unshift({
+      role: 'system',
+      content: 'КРИТИЧЕСКОЕ ПРАВИЛО: Доступ к интернету ЗАБЛОКИРОВАН (лимит). Отвечай только на основе своих знаний. Если нужны свежие данные (погода), скажи: "Извините, дневной лимит запросов к интернету исчерпан". КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО писать URL-адреса или названия сайтов.'
+    });
+  } else {
+    localMessages.unshift({
+      role: 'system',
+      content: 'ВНИМАНИЕ: Ты — агент с доступом в интернет. Если пользователь спрашивает о погоде, новостях или актуальных данных, ты ОБЯЗАН немедленно вызвать инструмент web_search. НЕ ПЫТАЙСЯ отвечать из своих знаний и НЕ ПИШИ ссылки на сайты. Просто вызови инструмент.'
+    });
+  }
 
-  yield* streamOpenAICompat({
-    baseUrl: config.ollama.baseUrl,
-    apiKey: null,
-    model: mapping.local,
-    messages,
-    temperature,
-    signal
-  });
+  try {
+    yield* runLLM(config.ollama.baseUrl, null, mapping.local, localMessages, !forceLocal);
+  } catch (err) {
+    yield { type: 'error', message: `Ошибка локальной модели: ${err.message}` };
+  }
 }

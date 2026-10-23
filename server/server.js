@@ -34,6 +34,38 @@ function isRateLimited(ip) {
   return requests.length > config.rateLimitMaxRequests;
 }
 
+// --- БЮДЖЕТНЫЙ СТОРОЖ ---
+const budget = {
+  date: new Date().toDateString(),
+  cloudRequests: 0,
+  resetIfNewDay() {
+    const today = new Date().toDateString();
+    if (this.date !== today) {
+      this.date = today;
+      this.cloudRequests = 0;
+      console.log('[Budget] Новый день, счётчик сброшен');
+    }
+  },
+  canUseCloud() {
+    this.resetIfNewDay();
+    if (!config.budget.enabled) return true;
+    return this.cloudRequests < config.budget.dailyLimit;
+  },
+  recordRequest() {
+    this.cloudRequests++;
+    console.log(`[Budget] Облачных запросов сегодня: ${this.cloudRequests}/${config.budget.dailyLimit}`);
+  },
+  getStatus() {
+    this.resetIfNewDay();
+    return { 
+      used: this.cloudRequests, 
+      limit: config.budget.dailyLimit, 
+      remaining: Math.max(0, config.budget.dailyLimit - this.cloudRequests),
+      allowed: this.canUseCloud() 
+    };
+  }
+};
+
 const server = http.createServer(async (req, res) => {
   // CORS
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -43,6 +75,13 @@ const server = http.createServer(async (req, res) => {
   if (req.method === 'OPTIONS') {
     res.writeHead(204);
     res.end();
+    return;
+  }
+
+  // --- СТАТУС БЮДЖЕТА ---
+  if (req.url === '/api/budget' && req.method === 'GET') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify(budget.getStatus()));
     return;
   }
 
@@ -91,8 +130,7 @@ const server = http.createServer(async (req, res) => {
 
         const routingModel = hasImages ? 'vision' : model;
 
-        // ИСПРАВЛЕНИЕ: Если выбрана НЕ Vision-модель, удаляем картинки из истории, 
-        // чтобы текстовые модели (qwen, deepseek-r1) не падали с ошибкой 500.
+        // Если выбрана НЕ Vision-модель, удаляем картинки из истории
         let finalMessages = messages;
         if (!hasImages) {
           finalMessages = messages.map(m => {
@@ -111,11 +149,25 @@ const server = http.createServer(async (req, res) => {
           'X-Accel-Buffering': 'no'
         });
 
+        // --- ПРОВЕРКА БЮДЖЕТА ---
+        let forceLocal = false;
+        if (!budget.canUseCloud()) {
+          forceLocal = true;
+          res.write(`data: ${JSON.stringify({ 
+            type: 'system_alert', 
+            message: `⚠️ Дневной лимит облачных запросов (${config.budget.dailyLimit}) исчерпан. Переключение на локальную модель.` 
+          })}\n\n`);
+        } else {
+          budget.recordRequest();
+        }
+
+        // Вызываем fallback (он внутри решает, идти в облако или локально)
         for await (const chunk of streamWithFallback({ 
-          messages: finalMessages, // Передаем очищенную историю
+          messages: finalMessages, 
           model: routingModel, 
           temperature,
-          signal: req.signal 
+          signal: req.signal,
+          forceLocal // <-- ПЕРЕДАЕМ ФЛАГ
         })) {
           res.write(`data: ${JSON.stringify(chunk)}\n\n`);
         }

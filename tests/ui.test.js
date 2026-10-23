@@ -1,11 +1,12 @@
 // tests/ui.test.js
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { 
   renderTextSafely, 
   updateSendButtonState, 
   showToast, 
   createMessageElement,
-  appendStaticMessage // <--- Добавлен импорт
+  appendStaticMessage,
+  renderSources // <--- ДОБАВЛЕН ИМПОРТ
 } from '../src/ui.js';
 
 describe('ui.js', () => {
@@ -48,7 +49,6 @@ describe('ui.js', () => {
       expect(thoughtDiv).toBeTruthy();
       expect(thoughtDiv.textContent).toContain('Я думаю...');
       
-      // Проверяем, что обычный текст тоже на месте
       expect(container.textContent).toContain('Привет!');
       expect(container.textContent).toContain('Ответ.');
     });
@@ -59,15 +59,9 @@ describe('ui.js', () => {
       
       renderTextSafely(container, maliciousText);
       
-      // Проверяем, что тега script нет в DOM
       expect(container.querySelector('script')).toBeNull();
-      
-      // Проверяем, что текст "alert("hack")" остался, но как обычный текст
-      // (или удалился вместе с тегом, в зависимости от реализации DOMPurify)
       expect(container.textContent).not.toContain('<script>');
     });
-
-    // --- ТЕСТЫ ДЛЯ БЛОКОВ КОДА И MARKDOWN ---
 
     it('должен создавать блок кода с кнопкой копирования при наличии ```', () => {
       const container = document.createElement('div');
@@ -75,31 +69,38 @@ describe('ui.js', () => {
       
       renderTextSafely(container, text);
       
-      // Проверяем, что создался блок кода
       const codeWrapper = container.querySelector('.code-wrapper');
       expect(codeWrapper).toBeTruthy();
       
-      // Проверяем, что внутри есть тег pre и code
       const pre = codeWrapper.querySelector('pre');
       expect(pre).toBeTruthy();
       
-      // Проверяем кнопку копирования
       const copyBtn = codeWrapper.querySelector('.copy-code-btn');
       expect(copyBtn).toBeTruthy();
       expect(copyBtn.textContent).toBe('Копировать');
+
+      // --- ИСПРАВЛЕННЫЙ БЛОК С МОКОМ КЛИПБОРДА ---
+      const writeTextMock = vi.fn();
+      
+      // Используем Object.defineProperty, чтобы обойти ограничение "только для чтения"
+      Object.defineProperty(navigator, 'clipboard', {
+        value: { writeText: writeTextMock },
+        configurable: true,
+        writable: true
+      });
+      
+      copyBtn.click(); // Имитируем клик
+      expect(writeTextMock).toHaveBeenCalledWith('console.log("hello");\n');
+      expect(copyBtn.textContent).toBe('Скопировано!');
     });
 
     it('должен корректно обрабатывать незакрытый блок кода (стриминг)', () => {
       const container = document.createElement('div');
-      // Блок кода открыт, но не закрыт (эмуляция стриминга)
       const text = 'Вот код:\n```javascript\nconsole.log("hell';
       
       renderTextSafely(container, text);
       
-      // Обертка с кнопкой не должна создаваться, пока блок не закрыт
       expect(container.querySelector('.code-wrapper')).toBeNull();
-      
-      // Но тег pre и code должны быть
       const pre = container.querySelector('pre');
       expect(pre).toBeTruthy();
       expect(pre.textContent).toContain('console.log');
@@ -111,8 +112,6 @@ describe('ui.js', () => {
       
       renderTextSafely(container, text);
       
-      // Проверяем, что текст отрендерился (в тестах marked просто возвращает текст, 
-      // но мы проверяем, что он прошел через наш контейнер)
       expect(container.textContent).toContain('Это важный текст.');
     });
   });
@@ -132,21 +131,17 @@ describe('ui.js', () => {
       const chatContainer = document.createElement('div');
       const resultContainer = createMessageElement('ИИ', 'ai', chatContainer);
 
-      // Проверяем, что сообщение добавилось в чат
       const messageElement = chatContainer.querySelector('.message.ai');
       expect(messageElement).toBeTruthy();
       
-      // Проверяем, что имя отправителя есть в strong
       const strong = messageElement.querySelector('strong');
       expect(strong.textContent).toBe('ИИ: ');
       
-      // Проверяем, что вернулся контейнер для текста
       expect(resultContainer).toBeInstanceOf(HTMLDivElement);
       expect(resultContainer.className).toBe('');
     });
   });
 
-  // --- НОВЫЙ ТЕСТ ДЛЯ ДОБИВАНИЯ ПОКРЫТИЯ ---
   describe('appendStaticMessage', () => {
     it('должен добавлять сообщение в контейнер чата', () => {
       const chatContainer = document.createElement('div');
@@ -157,6 +152,74 @@ describe('ui.js', () => {
       expect(message).toBeTruthy();
       expect(message.textContent).toContain('Вы: ');
       expect(message.textContent).toContain('Тестовое сообщение');
+    });
+  });
+
+  // --- НОВЫЕ ТЕСТЫ ДЛЯ ИСТОЧНИКОВ (RENDER SOURCES) ---
+  describe('renderSources', () => {
+    it('не должен рендерить ничего при пустом массиве или null', () => {
+      const container = document.createElement('div');
+      
+      renderSources(container, []);
+      renderSources(container, null);
+      
+      expect(container.innerHTML).toBe('');
+      expect(container.querySelector('.sources-container')).toBeNull();
+    });
+
+    it('должен корректно рендерить карточки источников с фавиконками', () => {
+      const container = document.createElement('div');
+      const mockSources = [
+        { url: 'https://www.gismeteo.ru/weather', title: 'Gismeteo: Погода' },
+        { url: 'https://yandex.ru/pogoda', title: null } // Без title, чтобы покрыть fallback
+      ];
+
+      renderSources(container, mockSources);
+
+      const wrapper = container.querySelector('.sources-container');
+      expect(wrapper).toBeTruthy();
+      expect(wrapper.querySelector('.sources-title').textContent).toBe('Источники');
+
+      const cards = container.querySelectorAll('.source-card');
+      expect(cards.length).toBe(2);
+
+      // Проверка первой карточки
+      const firstCard = cards[0];
+      expect(firstCard.href).toBe('https://www.gismeteo.ru/weather');
+      expect(firstCard.querySelector('.source-domain').textContent).toBe('gismeteo.ru');
+      expect(firstCard.querySelector('.source-title').textContent).toBe('Gismeteo: Погода');
+      expect(firstCard.querySelector('.source-favicon').src).toContain('domain=gismeteo.ru');
+
+      // Проверка второй карточки (fallback на URL вместо title)
+      const secondCard = cards[1];
+      expect(secondCard.querySelector('.source-domain').textContent).toBe('yandex.ru');
+      expect(secondCard.querySelector('.source-title').textContent).toBe('https://yandex.ru/pogoda');
+    });
+
+    it('должен удалять старый блок источников при повторном рендере', () => {
+      const container = document.createElement('div');
+      const mockSources = [{ url: 'https://test.com', title: 'Test' }];
+      
+      renderSources(container, mockSources);
+      expect(container.querySelectorAll('.sources-container').length).toBe(1);
+
+      renderSources(container, mockSources);
+      // Старый блок должен быть удален, остаться только один
+      expect(container.querySelectorAll('.sources-container').length).toBe(1);
+    });
+
+    it('должен безопасно обрабатывать кривые URL (catch block)', () => {
+      const container = document.createElement('div');
+      const badSources = [
+        { url: 'not-a-valid-url', title: 'Битая ссылка' }
+      ];
+
+      // Не должно выбросить исключение
+      expect(() => renderSources(container, badSources)).not.toThrow();
+      
+      const card = container.querySelector('.source-card');
+      // Fallback из catch-блока должен установить домен как 'Сайт'
+      expect(card.querySelector('.source-domain').textContent).toBe('Сайт');
     });
   });
 });

@@ -57,3 +57,53 @@ export async function* streamChatAPI({ messagesContext, model, temperature }) {
     }
   }
 }
+//умный поиск (генеративный поиск от Yanddex search API)
+export async function* streamSearchAPI({ query }) {
+  const authToken = localStorage.getItem('chat_auth_token') || 'dev-secret-token';
+
+  const response = await fetch('/api/search', {
+    method: 'POST',
+    headers: { 
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${authToken}` 
+    },
+    body: JSON.stringify({ query })
+  });
+
+  if (!response.ok) throw new Error(`Network response was not ok: ${response.status}`);
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split('\n\n');
+    buffer = lines.pop();
+
+    for (const line of lines) {
+      if (!line.startsWith('data: ')) continue;
+      const jsonStr = line.replace('data: ', '').trim();
+      if (jsonStr === '[DONE]') return;
+      
+      try {
+        yield JSON.parse(jsonStr);
+      } catch (err) {
+        console.warn('[Search API] Ошибка парсинга:', err);
+      }
+    }
+  }
+}
+
+//Бюджет
+export async function fetchBudgetStatus() {
+  try {
+    const res = await fetch('/api/budget');
+    return await res.json();
+  } catch {
+    return { used: 0, limit: 0, allowed: true };
+  }
+}
