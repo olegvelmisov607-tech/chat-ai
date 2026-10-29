@@ -69,17 +69,24 @@ test.describe('Local AI Chat E2E Tests', () => {
     await expect(sendBtn).toBeDisabled();
   });
 
-  test('полный цикл отправки картинки с моком API (Vision)', async ({ page }) => {
-    await page.route('**/api/chat', async route => {
-      const body = 'data: {"type":"model_info","modelName":"gemma3:12b"}\n\n' +
-                   'data: {"type":"content","text":"Я вижу"}\n\n' +
-                   'data: {"type":"content","text":" тестовую картинку."}\n\n' +
-                   'data: [DONE]\n\n';
-      
-      await route.fulfill({
-        status: 200,
-        headers: { 'Content-Type': 'text/event-stream' },
-        body: body
+  test('полный цикл отправки картинки с моком WebSocket (Vision)', async ({ page }) => {
+    // Мокаем WebSocket соединение
+    await page.routeWebSocket(/ws:\/\/localhost:3000\/ws/, ws => {
+      ws.onMessage((message) => {
+        try {
+          const data = JSON.parse(message);
+          
+          if (data.type === 'chat_start') {
+            // Отправляем ответ, как будто это Vision-модель
+            ws.send(JSON.stringify({ type: 'model_info', modelName: 'gemma3:12b' }));
+            ws.send(JSON.stringify({ type: 'content', text: 'Я вижу' }));
+            ws.send(JSON.stringify({ type: 'content', text: ' тестовую картинку.' }));
+            ws.send('[DONE]');
+          }
+        // eslint-disable-next-line no-unused-vars
+        } catch (e) {
+          // Игнорируем не-JSON сообщения
+        }
       });
     });
 
