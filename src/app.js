@@ -20,8 +20,8 @@ let dbInstance = null;
 let hasShownFallbackAlert = false;
 let hasShownBudgetNotification = false;
 
-// Контроллер для текущей генерации
 let currentAbortController = null;
+let remoteGenerationId = null; // ID генерации, запущенной на другом устройстве
 
 const chatForm = document.getElementById('chat-form');
 const userInput = document.getElementById('user-input');
@@ -33,6 +33,7 @@ const sendBtn = document.getElementById('send-btn');
 const previewImg = document.getElementById('image-preview');
 const removeImageBtn = document.getElementById('remove-image-btn');
 const budgetIndicator = document.getElementById('budget-indicator');
+const syncBanner = document.getElementById('sync-banner'); // <-- ДОБАВЛЕНО
 
 const routes = {
   '#chat': () => switchScreen('screen-chat'),
@@ -97,12 +98,56 @@ initAttachments();
 initNotifications();
 initPiP();
 
+// --- СИНХРОНИЗАЦИЯ UI ---
+window.addEventListener('sync_generation_started', (e) => {
+  const { generationId } = e.detail;
+  console.log('[Sync] Генерация началась на другом устройстве', generationId);
+  remoteGenerationId = generationId;
+  
+  if (syncBanner) syncBanner.classList.remove('hidden');
+  
+  // Меняем кнопку на STOP (чтобы можно было остановить удаленно)
+  if (!currentAbortController) {
+    toggleSendButtonToStop(sendBtn, true);
+  }
+});
+
+window.addEventListener('sync_generation_stopped', (e) => {
+  const { generationId } = e.detail;
+  console.log('[Sync] Генерация остановлена на другом устройстве', generationId);
+  
+  if (remoteGenerationId === generationId) {
+    remoteGenerationId = null;
+    if (syncBanner) syncBanner.classList.add('hidden');
+    
+    if (!currentAbortController) {
+      toggleSendButtonToStop(sendBtn, false);
+      updateSendButtonState(userInput, sendBtn, !!getAttachedImage());
+    }
+  }
+});
+// --------------------------
+
 chatForm.addEventListener('submit', async (e) => {
   e.preventDefault();
 
-  // --- Если идет генерация, кнопка работает как STOP ---
+  // Если идет ЛОКАЛЬНАЯ генерация — останавливаем её
   if (currentAbortController) {
     currentAbortController.abort();
+    return;
+  }
+
+  // Если идет УДАЛЕННАЯ генерация — отправляем STOP на сервер
+  if (remoteGenerationId) {
+    const authToken = localStorage.getItem('chat_auth_token') || 'dev-secret-token';
+    const userId = localStorage.getItem('chat_user_id');
+    const wsUrl = `ws://${window.location.host}/ws?token=${authToken}&clientId=${userId}`;
+    const tempWs = new WebSocket(wsUrl);
+    
+    tempWs.onopen = () => {
+      tempWs.send(JSON.stringify({ type: 'chat_stop', generationId: remoteGenerationId }));
+      tempWs.close();
+    };
     return;
   }
   
@@ -147,7 +192,6 @@ chatForm.addEventListener('submit', async (e) => {
   currentAbortController = abortController;
   const generationId = crypto.randomUUID();
 
-  // Переключаем кнопку в режим STOP
   toggleSendButtonToStop(sendBtn, true);
 
   try {
@@ -206,7 +250,7 @@ chatForm.addEventListener('submit', async (e) => {
 
   } catch (err) {
     if (err.name === 'AbortError') {
-       console.log('[AI Chat] Генерация остановлена пользователем');
+       console.log('[AI Chat] Генерация остановлена (локально или из другой вкладки)');
        if (!fullAIResponse && !fullReasoning) {
           aiContainer.textContent = '⏹️ Генерация остановлена.';
        }
@@ -225,10 +269,7 @@ chatForm.addEventListener('submit', async (e) => {
     }
   } finally {
     currentAbortController = null;
-    
-    // Возвращаем кнопку в обычный режим
     toggleSendButtonToStop(sendBtn, false);
-    // Обновляем состояние (вдруг поле пустое, тогда кнопка снова заблокируется)
     updateSendButtonState(userInput, sendBtn, !!getAttachedImage());
   }
 });

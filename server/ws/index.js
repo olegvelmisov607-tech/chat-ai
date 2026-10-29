@@ -6,7 +6,21 @@ import { budget } from '../budget.js';
 
 export function initWebSocketServer(httpServer, { generationBus }) {
   const wss = new WebSocketServer({ server: httpServer, path: config.ws.path });
-  const activeGenerations = new Map();
+  
+  const activeGenerations = new Map(); // generationId -> { abortController, clientId, ws }
+  const userSockets = new Map(); // clientId -> Set<WebSocket>
+
+  // Рассылка события всем сокетам пользователя (кроме того, кто инициировал)
+  const broadcastToUser = (clientId, excludeWs, eventData) => {
+    const sockets = userSockets.get(clientId);
+    if (sockets) {
+      for (const socket of sockets) {
+        if (socket !== excludeWs && socket.readyState === WebSocket.OPEN) {
+          socket.send(JSON.stringify(eventData));
+        }
+      }
+    }
+  };
 
   wss.on('connection', (ws, req) => {
     const url = new URL(req.url, 'http://localhost');
@@ -20,18 +34,27 @@ export function initWebSocketServer(httpServer, { generationBus }) {
 
     console.log(`[WS] Клиент подключен: ${clientId}`);
 
+    if (!userSockets.has(clientId)) {
+      userSockets.set(clientId, new Set());
+    }
+    userSockets.get(clientId).add(ws);
+
     ws.on('message', async (data) => {
       try {
         const message = JSON.parse(data.toString());
 
-        // --- ОБРАБОТКА СТАРТА ГЕНЕРАЦИИ ---
         if (message.type === 'chat_start') {
           const { generationId, messages, model, temperature } = message;
           
           const abortController = new AbortController();
-          activeGenerations.set(generationId, { abortController, clientId });
+          activeGenerations.set(generationId, { abortController, clientId, ws });
 
-          // Проверяем, не нажали ли STOP до того, как мы начали (race condition)
+          // Синхронизация: говорим другим вкладкам, что началась генерация
+          broadcastToUser(clientId, ws, { 
+            type: 'generation_started', 
+            generationId 
+          });
+
           const alreadyStopped = await generationBus.isAlreadyStopped(generationId);
           if (alreadyStopped) {
             ws.send(JSON.stringify({ type: 'system_alert', message: 'Генерация была отменена.' }));
@@ -39,7 +62,6 @@ export function initWebSocketServer(httpServer, { generationBus }) {
             return;
           }
 
-          // --- ПРОВЕРКА БЮДЖЕТА (ТОЛЬКО ЧТЕНИЕ, БЕЗ СПИСАНИЯ) ---
           let forceLocal = false;
           if (!budget.canUseCloud()) {
             forceLocal = true;
@@ -49,13 +71,11 @@ export function initWebSocketServer(httpServer, { generationBus }) {
             }));
           }
 
-          // Регистрируем в шине, чтобы прилетевший STOP из Redis сработал
           generationBus.register(generationId, () => {
             abortController.abort();
           });
 
           try {
-            // Запускаем стриминг
             for await (const chunk of streamWithFallback({
               messages,
               model,
@@ -85,12 +105,18 @@ export function initWebSocketServer(httpServer, { generationBus }) {
           } finally {
             activeGenerations.delete(generationId);
             generationBus.unregister(generationId);
+            
+            // Синхронизация: говорим другим вкладкам, что генерация завершена
+            broadcastToUser(clientId, ws, { 
+              type: 'generation_stopped', 
+              generationId 
+            });
           }
         }
 
-        // Обработка команды STOP
         if (message.type === 'chat_stop') {
           const { generationId } = message;
+          
           await generationBus.publishStop(generationId);
           
           if (activeGenerations.has(generationId)) {
@@ -98,6 +124,12 @@ export function initWebSocketServer(httpServer, { generationBus }) {
             abortController.abort();
             activeGenerations.delete(generationId);
           }
+
+          // Синхронизация: говорим другим вкладкам, что генерация остановлена
+          broadcastToUser(clientId, ws, { 
+            type: 'generation_stopped', 
+            generationId 
+          });
         }
 
       } catch (e) {
@@ -107,6 +139,14 @@ export function initWebSocketServer(httpServer, { generationBus }) {
 
     ws.on('close', () => {
       console.log(`[WS] Клиент отключен: ${clientId}`);
+      
+      if (userSockets.has(clientId)) {
+        userSockets.get(clientId).delete(ws);
+        if (userSockets.get(clientId).size === 0) {
+          userSockets.delete(clientId);
+        }
+      }
+
       for (const [genId, gen] of activeGenerations.entries()) {
         if (gen.clientId === clientId) {
           gen.abortController.abort();

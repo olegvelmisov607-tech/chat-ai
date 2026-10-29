@@ -1,16 +1,25 @@
-// src/transport.js
 import { streamChatAPI } from './api.js';
+
+// Постоянный ID пользователя (устройства) из localStorage
+function getUserId() {
+  let userId = localStorage.getItem('chat_user_id');
+  if (!userId) {
+    userId = crypto.randomUUID();
+    localStorage.setItem('chat_user_id', userId);
+  }
+  return userId;
+}
 
 export async function* streamChat({ messagesContext, model, temperature, generationId, signal }) {
   const authToken = localStorage.getItem('chat_auth_token') || 'dev-secret-token';
+  const userId = getUserId();
   const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-  const wsUrl = `${wsProtocol}//${window.location.host}/ws?token=${authToken}&clientId=${generationId}`;
+  const wsUrl = `${wsProtocol}//${window.location.host}/ws?token=${authToken}&clientId=${userId}`;
 
   let ws;
   let wsOpened = false;
 
   try {
-    // Пытаемся открыть WS с таймаутом в 2 секунды
     ws = new WebSocket(wsUrl);
     
     await new Promise((resolve, reject) => {
@@ -31,7 +40,6 @@ export async function* streamChat({ messagesContext, model, temperature, generat
       };
     });
 
-    // Если дошли сюда — WS открыт. Отправляем запрос.
     ws.send(JSON.stringify({ 
       type: 'chat_start', 
       generationId, 
@@ -40,7 +48,6 @@ export async function* streamChat({ messagesContext, model, temperature, generat
       temperature 
     }));
 
-    // Очередь сообщений (WS работает на событиях, а нам нужен async iterator)
     const queue = [];
     let done = false;
     let error = null;
@@ -51,14 +58,35 @@ export async function* streamChat({ messagesContext, model, temperature, generat
         return;
       }
       try {
-        queue.push(JSON.parse(e.data));
+        const data = JSON.parse(e.data);
+        
+        // --- СИНХРОНИЗАЦИЯ: Пробрасываем события в UI ---
+        if (data.type === 'generation_started') {
+          window.dispatchEvent(new CustomEvent('sync_generation_started', { detail: data }));
+          return; 
+        }
+        
+        if (data.type === 'generation_stopped') {
+          window.dispatchEvent(new CustomEvent('sync_generation_stopped', { detail: data }));
+          
+          // Если это наша генерация, принудительно обрываем её
+          if (data.generationId === generationId && signal && !signal.aborted) {
+            console.log('[Sync] Получен STOP для нашей генерации из другой вкладки');
+            ws.close();
+            done = true;
+            error = new DOMException('Aborted by sync', 'AbortError');
+            return;
+          }
+          return;
+        }
+
+        queue.push(data);
       } catch (err) { /* empty */ }
     };
 
     ws.onclose = () => { done = true; };
     ws.onerror = (e) => { error = e; done = true; };
 
-    // Слушаем сигнал отмены (STOP)
     if (signal) {
       signal.addEventListener('abort', () => {
         if (ws.readyState === WebSocket.OPEN) {
@@ -69,7 +97,6 @@ export async function* streamChat({ messagesContext, model, temperature, generat
       });
     }
 
-    // Читаем очередь
     while (!done || queue.length > 0) {
       if (queue.length > 0) {
         yield queue.shift();
@@ -82,11 +109,9 @@ export async function* streamChat({ messagesContext, model, temperature, generat
 
   } catch (err) {
     console.warn('[Transport] WS не удался, переход на SSE:', err.message);
-    // Если WS упал ДО открытия — идем в SSE
     if (!wsOpened) {
       yield* streamChatAPI({ messagesContext, model, temperature, signal, generationId });
     } else {
-      // Если WS уже был открыт, но потом упал — это ошибка, пробрасываем дальше
       throw err;
     }
   }

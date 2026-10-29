@@ -1,7 +1,43 @@
 const CONTROL_CHANNEL = 'gen:control';
 
-export function createGenerationBus({ pub, sub, cache }) {
-  // Локальный реестр коллбэков (живет только в памяти текущего пода)
+export function createGenerationBus(redisClients) {
+  // ==========================================
+  // ВЕТКА 1: БЕЗ REDIS (In-Memory Fallback)
+  // ==========================================
+  if (!redisClients) {
+    console.log('[Bus] Работаем в режиме In-Memory (без Redis)');
+    
+    const localHandlers = new Map();
+    const stoppedIds = new Set(); // Эмуляция TTL
+
+    return {
+      register(generationId, onStop) {
+        localHandlers.set(generationId, onStop);
+      },
+      unregister(generationId) {
+        localHandlers.delete(generationId);
+      },
+      async publishStop(generationId) {
+        // Запоминаем, что генерация остановлена (на 60 сек)
+        stoppedIds.add(generationId);
+        setTimeout(() => stoppedIds.delete(generationId), 60000);
+
+        // Вызываем локальный обработчик, если он есть
+        if (localHandlers.has(generationId)) {
+          console.log(`[Bus In-Memory] STOP для генерации: ${generationId}`);
+          localHandlers.get(generationId)();
+        }
+      },
+      async isAlreadyStopped(generationId) {
+        return stoppedIds.has(generationId);
+      }
+    };
+  }
+
+  // ==========================================
+  // ВЕТКА 2: С REDIS (Pub/Sub)
+  // ==========================================
+  const { pub, sub, cache } = redisClients;
   const localHandlers = new Map();
 
   // Подписываемся на общий канал управления

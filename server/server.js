@@ -9,6 +9,7 @@ import { budget } from './budget.js';
 
 import { createRedisClients } from './redis/client.js';
 import { createGenerationBus } from './redis/generation-bus.js';
+import { mcpManager } from './mcp-manager.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -40,8 +41,29 @@ function isRateLimited(ip) {
 }
 
 async function bootstrap() {
+  // 1. Инициализируем Redis
   const redisClients = await createRedisClients();
   const generationBus = createGenerationBus(redisClients);
+
+  // 2. Инициализируем MCP-сервер (подключаем до старта HTTP)
+  try {
+    // Указываем путь к C:\temp напрямую (или берем из .env)
+    const sandboxPath = process.env.MCP_SANDBOX_PATH || 'C:\\temp';
+    
+    // Создаем папку, если ее нет (это безопасно, если папка уже есть)
+    if (!fs.existsSync(sandboxPath)) {
+      fs.mkdirSync(sandboxPath, { recursive: true });
+    }
+    
+    await mcpManager.connectServer(
+      'filesystem', 
+      'npx', 
+      ['-y', '@modelcontextprotocol/server-filesystem', sandboxPath]
+    );
+  } catch (err) {
+    console.warn('[MCP] Не удалось подключить MCP-сервер (возможно, нет npx):', err.message);
+    // Мы не падаем, а просто продолжаем без MCP
+  }
 
   const server = http.createServer(async (req, res) => {
     res.setHeader('Access-Control-Allow-Origin', '*');

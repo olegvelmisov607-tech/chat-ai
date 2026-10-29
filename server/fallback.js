@@ -1,9 +1,10 @@
 import { config, modelMap } from './config.js';
 import { streamOpenAICompat } from './providers/openai-compat.js';
 import { streamYandexSearch } from './providers/yandex-search.js';
-import { budget } from './budget.js'; // <-- ИМПОРТ БЮДЖЕТА
+import { budget } from './budget.js';
+import { mcpManager } from './mcp-manager.js'; // <-- ИМПОРТ MCP MANAGER
 
-const TOOLS = [{
+const BASE_TOOLS = [{
   type: 'function',
   function: {
     name: 'web_search',
@@ -26,8 +27,11 @@ export async function* streamWithFallback({ model, messages, temperature, signal
   const mapping = modelMap[model] || modelMap['qwen'];
   
   const isCloudSupported = mapping.cloud !== null;
-  // Бюджет больше не влияет на доступность облака, только на доступность поиска
   const isCloudAvailable = !forceLocal && isCloudSupported && Date.now() > breakerOpenUntil && !!config.deepseek.apiKey;
+
+  // Получаем инструменты от MCP (динамически)
+  const mcpTools = await mcpManager.getAllToolsAsOpenAI();
+  const ALL_TOOLS = [...BASE_TOOLS, ...mcpTools];
 
   async function* runLLM(baseUrl, apiKey, llmModel, msgs, allowTools = true) {
     let toolCallData = null;
@@ -35,7 +39,7 @@ export async function* streamWithFallback({ model, messages, temperature, signal
 
     for await (const chunk of streamOpenAICompat({
       baseUrl, apiKey, model: llmModel, messages: msgs, temperature, signal,
-      tools: allowTools ? TOOLS : undefined 
+      tools: allowTools ? ALL_TOOLS : undefined 
     })) {
       if (chunk.type === 'tool_call') {
         toolCallData = chunk.toolCall;
@@ -48,58 +52,78 @@ export async function* streamWithFallback({ model, messages, temperature, signal
     }
 
     if (toolCallData) {
-      let query = 'unknown';
+      const toolName = toolCallData.function.name;
+      let args = {};
       try {
-        query = JSON.parse(toolCallData.function.arguments).query;
+        args = JSON.parse(toolCallData.function.arguments);
       } catch (e) {
         // ignore
       }
 
-      // --- СПИСЫВАЕМ БЮДЖЕТ ТОЛЬКО ЗДЕСЬ, ПЕРЕД РЕАЛЬНЫМ ПОИСКОМ ---
-      if (!budget.canUseCloud()) {
-        // Если бюджета нет, но модель все равно дернула поиск
-        yield { type: 'system_alert', message: '⚠️ Дневной лимит поисковых запросов исчерпан. Отвечаю из своих знаний.' };
-        
-        const secondMessages = [
-          ...msgs,
-          { role: 'assistant', content: null, tool_calls: [toolCallData] },
-          { role: 'system', content: 'Поиск недоступен (лимит). Ответь на основе своих знаний.' }
-        ];
-        yield* runLLM(baseUrl, apiKey, llmModel, secondMessages, false);
-        return;
-      }
+      let toolResultText = '';
+      let shouldCallSearch = false;
 
-      budget.recordRequest(); // Списываем 1 запрос к Яндексу
-      console.log(`[Budget] Потрачен 1 поисковый запрос. Остаток: ${budget.getStatus().remaining}`);
-
-      yield { type: 'system_alert', message: `🔍 Ищу в интернете: "${query}"...` };
-
-      let searchResultText = '';
-      let searchSources = [];
-      
-      try {
-        for await (const sChunk of streamYandexSearch({
-          query, folderId: config.yandexSearch.folderId, apiKey: config.yandexSearch.apiKey, signal
-        })) {
-          if (sChunk.type === 'sources') searchSources = sChunk.data;
-          if (sChunk.type === 'content') searchResultText += sChunk.text;
+      // --- ОБРАБОТКА ВЫЗОВА ИНСТРУМЕНТА ---
+      if (toolName === 'web_search') {
+        shouldCallSearch = true;
+      } else {
+        // Это MCP-инструмент
+        yield { type: 'system_alert', message: `🛠️ Выполняю ${toolName}...` };
+        try {
+          toolResultText = await mcpManager.callTool(toolName, args);
+        } catch (err) {
+          toolResultText = `Ошибка MCP: ${err.message}`;
         }
-      } catch (e) {
-        searchResultText = `Ошибка поиска: ${e.message}`;
       }
 
-      if (searchSources.length > 0) {
-        yield { type: 'sources', data: searchSources };
+      if (shouldCallSearch) {
+        // --- ЛОГИКА ПОИСКА (С БЮДЖЕТОМ) ---
+        if (!budget.canUseCloud()) {
+          yield { type: 'system_alert', message: '⚠️ Дневной лимит поисковых запросов исчерпан. Отвечаю из своих знаний.' };
+          
+          const secondMessages = [
+            ...msgs,
+            { role: 'assistant', content: null, tool_calls: [toolCallData] },
+            { role: 'system', content: 'Поиск недоступен (лимит). Ответь на основе своих знаний.' }
+          ];
+          yield* runLLM(baseUrl, apiKey, llmModel, secondMessages, false);
+          return;
+        }
+
+        budget.recordRequest();
+        console.log(`[Budget] Потрачен 1 поисковый запрос. Остаток: ${budget.getStatus().remaining}`);
+
+        const query = args.query || 'unknown';
+        yield { type: 'system_alert', message: `🔍 Ищу в интернете: "${query}"...` };
+
+        let searchSources = [];
+        try {
+          for await (const sChunk of streamYandexSearch({
+            query, folderId: config.yandexSearch.folderId, apiKey: config.yandexSearch.apiKey, signal
+          })) {
+            if (sChunk.type === 'sources') searchSources = sChunk.data;
+            if (sChunk.type === 'content') toolResultText += sChunk.text;
+          }
+        } catch (e) {
+          toolResultText = `Ошибка поиска: ${e.message}`;
+        }
+
+        if (searchSources.length > 0) {
+          yield { type: 'sources', data: searchSources };
+        }
       }
 
+      // --- ВТОРОЙ ПРОХОД (С РЕЗУЛЬТАТОМ ИНСТРУМЕНТА) ---
       const secondMessages = [
         ...msgs,
         { role: 'assistant', content: null, tool_calls: [toolCallData] },
         { 
           role: 'system', 
-          content: 'Вот результаты поиска в интернете. Твоя задача — внимательно прочитать их и написать краткий, прямой ответ пользователю. Выведи конкретные факты (например, температуру воздуха, погодные условия). НЕ ПИШИ инструкции, НЕ ПИШИ ссылки на сайты (система покажет их отдельно), НЕ ГОВОРИ "я могу найти". Просто возьми данные из текста ниже и ответь ими.' 
+          content: shouldCallSearch 
+            ? 'Вот результаты поиска в интернете. Твоя задача — внимательно прочитать их и написать краткий, прямой ответ пользователю. Выведи конкретные факты. НЕ ПИШИ инструкции, НЕ ПИШИ ссылки на сайты (система покажет их отдельно). Просто возьми данные из текста ниже и ответь ими.'
+            : `Вот результат выполнения инструмента ${toolName}. Используй его для ответа пользователю.`
         },
-        { role: 'tool', tool_call_id: toolCallData.id, content: searchResultText }
+        { role: 'tool', tool_call_id: toolCallData.id, content: toolResultText }
       ];
 
       yield* runLLM(baseUrl, apiKey, llmModel, secondMessages, false); 
@@ -117,7 +141,6 @@ export async function* streamWithFallback({ model, messages, temperature, signal
       return;
     } catch (err) {
       if (err.name === 'AbortError') throw err; 
-
       if (err.status === 401 || err.status === 403) throw err;
       cloudFailures++;
       if (cloudFailures >= FAILS_TO_OPEN) breakerOpenUntil = Date.now() + 30000;
@@ -139,7 +162,7 @@ export async function* streamWithFallback({ model, messages, temperature, signal
   } else {
     localMessages.unshift({
       role: 'system',
-      content: `Ты — умный ИИ-ассистент. У тебя есть доступ к инструменту web_search (поиск в интернете).
+      content: `Ты — умный ИИ-ассистент. У тебя есть доступ к инструментам (поиск, файловая система и т.д.).
       
 ВАЖНО: НЕ ИСПОЛЬЗУЙ теги <think> в своих ответах. Пиши обычным текстом.
       
