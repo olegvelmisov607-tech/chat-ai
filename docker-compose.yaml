@@ -1,0 +1,40 @@
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: chat-app-redis
+    ports:
+      - "6379:6379"
+    command: ["redis-server", "--appendonly", "no", "--save", ""]
+    restart: unless-stopped
+    networks:
+      - redis-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  redisinsight:
+    image: redis/redisinsight:latest
+    container_name: chat-app-redisinsight
+    ports:
+      - "5540:5540"
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDISINSIGHT_ACCEPT_LICENSE=true
+    volumes:
+      - redisinsight-data:/db
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - redis-network
+
+volumes:
+  redisinsight-data:
+
+networks:
+  redis-network:
+    driver: bridge

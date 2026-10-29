@@ -7,7 +7,7 @@
  * @param {number} params.temperature - Температура генерации (креативность) от 0 до 1.
  * @returns {AsyncGenerator<Object, void, unknown>} Асинхронный генератор, возвращающий распарсенные JSON-чанки.
  */
-export async function* streamChatAPI({ messagesContext, model, temperature }) {
+export async function* streamChatAPI({ messagesContext, model, temperature, signal, generationId }) {
   const authToken = localStorage.getItem('chat_auth_token') || 'dev-secret-token';
 
   const response = await fetch('/api/chat', {
@@ -19,8 +19,10 @@ export async function* streamChatAPI({ messagesContext, model, temperature }) {
     body: JSON.stringify({ 
       messages: messagesContext, 
       model: model,
-      temperature: temperature // <-- ДОБАВЛЕНО
-    })
+      temperature: temperature,
+      generationId: generationId // Передаем на бэкенд
+    }),
+    signal // <-- Передаем сигнал для отмены
   });
 
   if (response.status === 401) {

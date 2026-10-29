@@ -808,3 +808,18 @@ main#app {
   text-overflow: ellipsis;
   font-size: 12px;
 }
+/* Стили для кнопки STOP */
+.chat-input-area button[type="submit"].is-stop {
+  background-color: #e74c3c; /* Красный цвет */
+}
+.chat-input-area button[type="submit"].is-stop:hover {
+  background-color: #c0392b;
+}
+
+/* Адаптив для иконки STOP на мобилках */
+@media (max-width: 576px) {
+  .chat-input-area button[type="submit"] .btn-icon-stop {
+    display: none; /* Управляется через JS */
+    font-size: 1.2rem;
+  }
+}

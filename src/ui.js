@@ -211,3 +211,36 @@ export function renderSources(container, sources) {
   sourcesWrapper.appendChild(grid);
   container.appendChild(sourcesWrapper);
 }
+
+/**
+ * Переключает кнопку отправки в режим STOP (во время генерации)
+ * или возвращает в обычный режим.
+ */
+export function toggleSendButtonToStop(sendBtn, isGenerating) {
+  if (isGenerating) {
+    sendBtn.disabled = false; // Разблокируем, чтобы можно было нажать
+    sendBtn.classList.add('is-stop');
+    
+    // Меняем текст/иконки
+    const btnText = sendBtn.querySelector('.btn-text');
+    const btnIcon = sendBtn.querySelector('.btn-icon');
+    const btnIconStop = sendBtn.querySelector('.btn-icon-stop');
+    
+    if (btnText) btnText.textContent = 'Остановить';
+    if (btnIcon) btnIcon.style.display = 'none';
+    if (btnIconStop) btnIconStop.style.display = 'block';
+  } else {
+    sendBtn.classList.remove('is-stop');
+    
+    const btnText = sendBtn.querySelector('.btn-text');
+    const btnIcon = sendBtn.querySelector('.btn-icon');
+    const btnIconStop = sendBtn.querySelector('.btn-icon-stop');
+    
+    if (btnText) btnText.textContent = 'Отправить';
+    // Восстанавливаем иконку (на мобилках покажется ➤, на десктопе скроется стилями)
+    if (btnIcon) btnIcon.style.display = 'block'; 
+    if (btnIconStop) btnIconStop.style.display = 'none';
+    
+    // Кнопка вернет свою обычную блокировку через updateSendButtonState
+  }
+}

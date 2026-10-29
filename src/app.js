@@ -2,13 +2,26 @@ import 'highlight.js/styles/atom-one-dark.css';
 import './style.css';
 import { initDB, saveMessage, getAllMessages } from './db.js';
 import { initAttachments, getAttachedImage, clearAttachment } from './attachments.js';
-import { renderTextSafely, createMessageElement, appendStaticMessage, showToast, updateSendButtonState, renderSources } from './ui.js';
-import { streamChatAPI, fetchBudgetStatus } from './api.js';
+import {
+   renderTextSafely,
+   createMessageElement, 
+   appendStaticMessage, 
+   showToast,
+   updateSendButtonState, 
+   renderSources,
+   toggleSendButtonToStop
+} from './ui.js';
+import { fetchBudgetStatus } from './api.js'; 
+import { streamChat } from './transport.js'; 
 import { initNotifications, showSystemNotification } from './features/notifications.js';
 import { initPiP } from './features/pip.js';
 
 let dbInstance = null;
 let hasShownFallbackAlert = false;
+let hasShownBudgetNotification = false;
+
+// Контроллер для текущей генерации
+let currentAbortController = null;
 
 const chatForm = document.getElementById('chat-form');
 const userInput = document.getElementById('user-input');
@@ -86,6 +99,12 @@ initPiP();
 
 chatForm.addEventListener('submit', async (e) => {
   e.preventDefault();
+
+  // --- Если идет генерация, кнопка работает как STOP ---
+  if (currentAbortController) {
+    currentAbortController.abort();
+    return;
+  }
   
   const imageBase64 = getAttachedImage(); 
   const text = userInput.value.trim();
@@ -124,29 +143,40 @@ chatForm.addEventListener('submit', async (e) => {
   let fullReasoning = '';
   let searchSources = null;
 
+  const abortController = new AbortController();
+  currentAbortController = abortController;
+  const generationId = crypto.randomUUID();
+
+  // Переключаем кнопку в режим STOP
+  toggleSendButtonToStop(sendBtn, true);
+
   try {
-    for await (const parsed of streamChatAPI({ messagesContext, model: selectedModel, temperature })) {
+    for await (const parsed of streamChat({ 
+      messagesContext, 
+      model: selectedModel, 
+      temperature,
+      generationId,
+      signal: abortController.signal
+    })) {
       if (parsed.type === 'model_info') {
         aiName = parsed.modelName;
         const label = aiContainer.parentElement.querySelector('strong');
         if (label) label.textContent = `${aiName}: `;
-      } else if (parsed.type === 'system_alert') {
-        // Тосты показываем всегда
+       } else if (parsed.type === 'system_alert') {
         showToast(parsed.message);
         
-        // Системные уведомления для бюджета
-        if (parsed.message.includes('лимит облачных запросов')) {
+        if (parsed.message.includes('лимит облачных запросов') && !hasShownBudgetNotification) {
           showSystemNotification(
             'Бюджет исчерпан 💸', 
             'Дневной лимит облачных запросов закончился. Переключаюсь на локальную модель.'
           );
+          hasShownBudgetNotification = true;
         }
       } else if (parsed.type === 'error') {
         showToast(`⚠️ ${parsed.message}`);
         aiContainer.textContent = `Ошибка: ${parsed.message}`;
         return;
       } else if (parsed.type === 'sources') {
-        // Просто сохраняем, НЕ рендерим (чтобы стриминг не стирал)
         searchSources = parsed.data;
       } else if (parsed.type === 'reasoning') {
         fullReasoning += parsed.text;
@@ -163,7 +193,6 @@ chatForm.addEventListener('submit', async (e) => {
       }
     }
 
-    // 5. Сохранение и рендер источников ПОСЛЕ стрима
     let textToSave = fullReasoning ? `<think>${fullReasoning}</think>\n${fullAIResponse}` : fullAIResponse;
     
     if (searchSources && searchSources.length > 0) {
@@ -173,10 +202,17 @@ chatForm.addEventListener('submit', async (e) => {
 
     await saveMessage(dbInstance, { sender: aiName, text: textToSave, className: 'ai' });
     
-    updateBudgetUI(); // Обновляем счетчик бюджета, но нотификацию не шлем
-   
+    updateBudgetUI();
 
   } catch (err) {
+    if (err.name === 'AbortError') {
+       console.log('[AI Chat] Генерация остановлена пользователем');
+       if (!fullAIResponse && !fullReasoning) {
+          aiContainer.textContent = '⏹️ Генерация остановлена.';
+       }
+       return;
+    }
+
     console.error('[AI Chat] Критическая ошибка:', err);
     if (err.message === 'Unauthorized') {
        aiContainer.textContent = 'Ошибка авторизации. Проверьте токен.';
@@ -187,6 +223,13 @@ chatForm.addEventListener('submit', async (e) => {
        aiContainer.textContent = 'Произошла непредвиденная ошибка.';
        showToast('Ошибка приложения');
     }
+  } finally {
+    currentAbortController = null;
+    
+    // Возвращаем кнопку в обычный режим
+    toggleSendButtonToStop(sendBtn, false);
+    // Обновляем состояние (вдруг поле пустое, тогда кнопка снова заблокируется)
+    updateSendButtonState(userInput, sendBtn, !!getAttachedImage());
   }
 });
 

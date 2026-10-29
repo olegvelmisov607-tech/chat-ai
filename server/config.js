@@ -30,6 +30,14 @@ export const config = {
   budget: {
     dailyLimit: parseInt(process.env.DAILY_CLOUD_LIMIT) || 5,
     enabled: process.env.BUDGET_ENABLED !== 'false',
+  },
+
+  //production-level 
+  redis: {
+    url: process.env.REDIS_URL || 'redis://127.0.0.1:6379'
+  },
+  ws: {
+    path: process.env.WS_PATH || '/ws'
   }
 };
 
