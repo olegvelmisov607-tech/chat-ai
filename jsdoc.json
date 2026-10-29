@@ -1,0 +1,22 @@
+{
+  "source": {
+    "include": ["src", "server"],
+    "includePattern": ".+\\.js$",
+    "excludePattern": "(node_modules|dist|docs|\\.test\\.js$|\\.spec\\.js$)"
+  },
+  "opts": {
+    "destination": "docs/api",
+    "recurse": true,
+    "readme": "README.md",
+    "template": "node_modules/docdash",
+    "encoding": "utf8"
+  },
+  "plugins": ["plugins/markdown"],
+  "templates": {
+    "cleverLinks": true,
+    "monospaceLinks": false,
+    "default": {
+      "includeDate": false
+    }
+  }
+}

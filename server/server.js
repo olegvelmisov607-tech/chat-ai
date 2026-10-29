@@ -22,9 +22,15 @@ const MIME_TYPES = {
   '.svg': 'image/svg+xml'
 };
 
-// --- RATE LIMITER ---
+// --- RATE LIMITER (в памяти, per-IP) ---
+// ⚠️ При нескольких подах счётчики не разделяются — для production нужен Redis.
 const ipRequestCounts = new Map();
 
+/**
+ * Проверяет, не превысил ли IP лимит запросов за окно.
+ * @param {string} ip
+ * @returns {boolean} true, если нужно вернуть 429
+ */
 function isRateLimited(ip) {
   const now = Date.now();
   const windowStart = now - config.rateLimitWindowMs;
@@ -33,6 +39,7 @@ function isRateLimited(ip) {
     ipRequestCounts.set(ip, []);
   }
   
+  // Оставляем только запросы внутри окна + текущий.
   const requests = ipRequestCounts.get(ip).filter(timestamp => timestamp > windowStart);
   requests.push(now);
   ipRequestCounts.set(ip, requests);
@@ -40,17 +47,16 @@ function isRateLimited(ip) {
   return requests.length > config.rateLimitMaxRequests;
 }
 
+/** Инициализация всего приложения: Redis, MCP, HTTP, WS. */
 async function bootstrap() {
-  // 1. Инициализируем Redis
+  // 1. Redis (или in-memory fallback — createRedisClients сам решит).
   const redisClients = await createRedisClients();
   const generationBus = createGenerationBus(redisClients);
 
-  // 2. Инициализируем MCP-сервер (подключаем до старта HTTP)
+  // 2. MCP: подключаем ДО старта HTTP, чтобы инструменты были готовы к первому запросу.
   try {
-    // Указываем путь к C:\temp напрямую (или берем из .env)
     const sandboxPath = process.env.MCP_SANDBOX_PATH || 'C:\\temp';
     
-    // Создаем папку, если ее нет (это безопасно, если папка уже есть)
     if (!fs.existsSync(sandboxPath)) {
       fs.mkdirSync(sandboxPath, { recursive: true });
     }
@@ -61,11 +67,12 @@ async function bootstrap() {
       ['-y', '@modelcontextprotocol/server-filesystem', sandboxPath]
     );
   } catch (err) {
+    // MCP необязателен: без него чат работает, просто без инструментов.
     console.warn('[MCP] Не удалось подключить MCP-сервер (возможно, нет npx):', err.message);
-    // Мы не падаем, а просто продолжаем без MCP
   }
 
   const server = http.createServer(async (req, res) => {
+    // CORS — упрощённый, для локальной разработки.
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
@@ -76,13 +83,14 @@ async function bootstrap() {
       return;
     }
 
-    // --- СТАТУС БЮДЖЕТА ---
+    // --- GET /api/budget: статус дневного лимита ---
     if (req.url === '/api/budget' && req.method === 'GET') {
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(budget.getStatus()));
       return;
     }
 
+    // --- POST /api/chat: основной SSE-эндпоинт ---
     if (req.url === '/api/chat' && req.method === 'POST') {
       const clientIp = req.socket.remoteAddress || 'unknown';
       if (isRateLimited(clientIp)) {
@@ -100,6 +108,7 @@ async function bootstrap() {
         return;
       }
 
+      // Читаем тело с защитой от слишком больших payload.
       let body = '';
       let size = 0;
 
@@ -118,6 +127,7 @@ async function bootstrap() {
         try {
           const { messages, model, temperature } = JSON.parse(body);
 
+          // Определяем, есть ли изображение в последнем сообщении — для роутинга на vision.
           const lastUserMessage = [...messages].reverse().find(m => m.role === 'user');
           const hasImages = lastUserMessage && 
                             Array.isArray(lastUserMessage.content) && 
@@ -125,6 +135,7 @@ async function bootstrap() {
 
           const routingModel = hasImages ? 'vision' : model;
 
+          // Для не-vision сообщений "сплющиваем" массив content в строку (Ollama так надёжнее).
           let finalMessages = messages;
           if (!hasImages) {
             finalMessages = messages.map(m => {
@@ -136,14 +147,15 @@ async function bootstrap() {
             });
           }
 
+          // Заголовки SSE.
           res.writeHead(200, {
             'Content-Type': 'text/event-stream',
             'Cache-Control': 'no-cache',
             'Connection': 'keep-alive',
-            'X-Accel-Buffering': 'no'
+            'X-Accel-Buffering': 'no' // отключаем буферизацию в nginx
           });
 
-          // --- ПРОВЕРКА БЮДЖЕТА (ТОЛЬКО ЧТЕНИЕ, БЕЗ СПИСАНИЯ) ---
+          // Проверка бюджета — ТОЛЬКО чтение, списание происходит внутри fallback.js.
           let forceLocal = false;
           if (!budget.canUseCloud()) {
             forceLocal = true;
@@ -153,6 +165,7 @@ async function bootstrap() {
             })}\n\n`);
           }
 
+          // Стримим чанки в формате SSE.
           for await (const chunk of streamWithFallback({ 
             messages: finalMessages, 
             model: routingModel, 
@@ -179,6 +192,7 @@ async function bootstrap() {
       return;
     }
 
+    // --- Статика: dist/ (с SPA-fallback на index.html) ---
     let filePath = path.join(__dirname, '..', 'dist', req.url === '/' ? 'index.html' : req.url.split('?')[0]);
     const ext = path.extname(filePath);
     const contentType = MIME_TYPES[ext] || 'application/octet-stream';
@@ -186,6 +200,7 @@ async function bootstrap() {
     fs.readFile(filePath, (err, content) => {
       if (err) {
         if (!ext) {
+          // SPA: любой путь без расширения → index.html (клиентский роутинг).
           fs.readFile(path.join(__dirname, '..', 'dist', 'index.html'), (err2, content2) => {
             if (err2) {
               res.writeHead(404); res.end('Not Found');

@@ -1,6 +1,10 @@
 // server/providers/openai-compat.js
 
-// Вспомогательная функция для эмуляции стриминга (когда stream: false)
+/**
+ * Эмулирует стриминг для ответов, пришедших единым JSON (stream:false).
+ * Разбивает текст на "слова" и отдаёт по одному — чтобы UI печатал плавно.
+ * @param {string} text
+ */
 async function* emulateStream(text) {
   if (!text) return;
   const chunks = text.match(/\S+\s*/g) || [text];
@@ -10,18 +14,31 @@ async function* emulateStream(text) {
   }
 }
 
+/**
+ * Универсальный клиент OpenAI-совместимого API (Ollama, DeepSeek и т.п.).
+ * Возвращает асинхронный генератор чанков:
+ *   {type:'content',text} | {type:'reasoning',text} | {type:'tool_call',toolCall}
+ *
+ * @param {Object} params
+ * @param {string} params.baseUrl - Например, http://localhost:11434/v1
+ * @param {string|null} params.apiKey
+ * @param {string} params.model
+ * @param {Array<Object>} params.messages
+ * @param {number} params.temperature
+ * @param {AbortSignal} [params.signal]
+ * @param {Array<Object>} [params.tools] - OpenAI-формат инструментов.
+ */
 export async function* streamOpenAICompat({ 
   baseUrl, apiKey, model, messages, temperature, signal, tools 
 }) {
   const headers = { 'Content-Type': 'application/json; charset=utf-8' };
   if (apiKey) headers['Authorization'] = `Bearer ${apiKey}`;
 
-  // Проверяем, есть ли изображения в сообщениях (OpenAI-формат)
+  // Vision-модели (Ollama) не поддерживают нативный стриминг с изображениями — эмулируем.
   const hasImages = messages.some(m => 
     Array.isArray(m.content) && m.content.some(c => c.type === 'image_url')
   );
 
-  // Для Vision-моделей принудительно отключаем нативный стриминг
   const useStream = !hasImages;
 
   const requestBody = {
@@ -30,15 +47,12 @@ export async function* streamOpenAICompat({
     stream: useStream
   };
 
-  // Добавляем инструменты, если они переданы
   if (tools && tools.length > 0) {
     requestBody.tools = tools;
   }
 
-  // ВАЖНО: Если это Ollama (порт 11434), не передаем temperature, 
-  // чтобы избежать ошибок 400/500 на локальных моделях.
+  // Ollama не принимает temperature — иначе 400/500. ⚠️ Хак, но работает.
   const isOllama = baseUrl.includes('11434');
-  
   if (!isOllama) {
     requestBody.temperature = temperature !== undefined ? temperature : 0.7;
   }
@@ -57,20 +71,17 @@ export async function* streamOpenAICompat({
     try {
       const errJson = await res.json();
       errDetails = JSON.stringify(errJson);
-    } catch {
-      // ignore
-    }
+    } catch { /* ignore */ }
     const err = new Error(`HTTP_${res.status} ${errDetails}`);
     err.status = res.status;
     throw err;
   }
 
-  // ВЕТКА 1: Эмуляция стриминга (Vision или не-стриминговые запросы)
+  // --- ВЕТКА 1: не-стриминговый ответ (Vision) ---
   if (!useStream) {
     const data = await res.json();
     const message = data.choices?.[0]?.message || {};
     
-    // Проверяем на наличие tool_calls в нестриминговом ответе
     if (message.tool_calls && message.tool_calls.length > 0) {
       for (const tc of message.tool_calls) {
         yield { type: 'tool_call', toolCall: tc };
@@ -83,12 +94,13 @@ export async function* streamOpenAICompat({
     return;
   }
 
-  // ВЕТКА 2: Нативный стриминг (Текст и Tool Calling)
+  // --- ВЕТКА 2: нативный SSE-стриминг ---
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
   let buffer = '';
   
-  // Для сборки tool_calls, которые приходят по частям
+  // OpenAI шлёт tool_calls фрагментами: сначала id+name, потом arguments по кусочкам.
+  // Поэтому собираем один текущий tool_call и отдаём его целиком в конце.
   let currentToolCall = null;
 
   while (true) {
@@ -121,12 +133,11 @@ export async function* streamOpenAICompat({
           yield { type: 'content', text: delta.content };
         }
         
-        // Парсинг Tool Calls
         if (delta.tool_calls && delta.tool_calls.length > 0) {
-          const tc = delta.tool_calls[0]; // Берем первый, так как обычно вызывается одна функция
+          const tc = delta.tool_calls[0]; // обычно одна функция за вызов
           
           if (tc.id) {
-            // Начало нового вызова инструмента
+            // Начало нового tool_call
             currentToolCall = {
               id: tc.id,
               type: 'function',
@@ -136,12 +147,12 @@ export async function* streamOpenAICompat({
               }
             };
           } else if (currentToolCall && tc.function?.arguments) {
-            // Дописываем аргументы, если они приходят фрагментами
+            // Дописываем аргументы фрагментами
             currentToolCall.function.arguments += tc.function.arguments;
           }
         }
       } catch {
-        // Игнорируем неполные чанки
+        // Неполный/битый чанк — нормально для стриминга, просто ждём следующий.
       }
     }
   }

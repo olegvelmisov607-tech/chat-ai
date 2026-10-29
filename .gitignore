@@ -47,3 +47,6 @@ coverage/
 # AI / MCP settings (содержат токены!)
 .gigacode_vsc/
 gigacode.jsonc
+
+# JSDoc output
+docs/

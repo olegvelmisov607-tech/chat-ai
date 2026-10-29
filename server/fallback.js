@@ -2,8 +2,12 @@ import { config, modelMap } from './config.js';
 import { streamOpenAICompat } from './providers/openai-compat.js';
 import { streamYandexSearch } from './providers/yandex-search.js';
 import { budget } from './budget.js';
-import { mcpManager } from './mcp-manager.js'; // <-- ИМПОРТ MCP MANAGER
+import { mcpManager } from './mcp-manager.js';
 
+/**
+ * Базовые (не-MCP) инструменты, доступные любой модели.
+ * MCP-инструменты добавляются динамически в streamWithFallback().
+ */
 const BASE_TOOLS = [{
   type: 'function',
   function: {
@@ -19,20 +23,40 @@ const BASE_TOOLS = [{
   }
 }];
 
+// --- Circuit Breaker для облака: после N подряд ошибок перестаём его дёргать на 30с ---
 let cloudFailures = 0;
 const FAILS_TO_OPEN = 2;
 let breakerOpenUntil = 0;
 
+/**
+ * Основная функция маршрутизации: пробует облако (DeepSeek), при неудаче — локальную (Ollama).
+ * Обрабатывает tool calling (web_search + MCP) с повторным проходом модели для ответа.
+ *
+ * @param {Object} params
+ * @param {string} params.model
+ * @param {Array<Object>} params.messages
+ * @param {number} params.temperature
+ * @param {AbortSignal} [params.signal]
+ * @param {boolean} [params.forceLocal=false] - Принудительно локальную (например, бюджет исчерпан).
+ */
 export async function* streamWithFallback({ model, messages, temperature, signal, forceLocal = false }) {
   const mapping = modelMap[model] || modelMap['qwen'];
   
   const isCloudSupported = mapping.cloud !== null;
   const isCloudAvailable = !forceLocal && isCloudSupported && Date.now() > breakerOpenUntil && !!config.deepseek.apiKey;
 
-  // Получаем инструменты от MCP (динамически)
+  // MCP-инструменты запрашиваем у менеджера (он агрегирует все подключённые серверы).
   const mcpTools = await mcpManager.getAllToolsAsOpenAI();
   const ALL_TOOLS = [...BASE_TOOLS, ...mcpTools];
 
+  /**
+   * Внутренний генератор: один "проход" модели + обработка tool_call, если он случился.
+   * @param {string} baseUrl
+   * @param {string|null} apiKey
+   * @param {string} llmModel
+   * @param {Array<Object>} msgs
+   * @param {boolean} [allowTools=true]
+   */
   async function* runLLM(baseUrl, apiKey, llmModel, msgs, allowTools = true) {
     let toolCallData = null;
     let hasYieldedContent = false;
@@ -42,6 +66,7 @@ export async function* streamWithFallback({ model, messages, temperature, signal
       tools: allowTools ? ALL_TOOLS : undefined 
     })) {
       if (chunk.type === 'tool_call') {
+        // Модель решила вызвать инструмент — прерываем стрим и обрабатываем вызов.
         toolCallData = chunk.toolCall;
         break; 
       }
@@ -51,23 +76,23 @@ export async function* streamWithFallback({ model, messages, temperature, signal
       }
     }
 
+    // --- ОБРАБОТКА TOOL CALL ---
     if (toolCallData) {
       const toolName = toolCallData.function.name;
       let args = {};
       try {
         args = JSON.parse(toolCallData.function.arguments);
       } catch (e) {
-        // ignore
+        // Модель может прислать невалидный JSON — работаем с пустыми аргументами.
       }
 
       let toolResultText = '';
       let shouldCallSearch = false;
 
-      // --- ОБРАБОТКА ВЫЗОВА ИНСТРУМЕНТА ---
       if (toolName === 'web_search') {
         shouldCallSearch = true;
       } else {
-        // Это MCP-инструмент
+        // Всё остальное считаем MCP-инструментом (read_file, write_file и т.д.)
         yield { type: 'system_alert', message: `🛠️ Выполняю ${toolName}...` };
         try {
           toolResultText = await mcpManager.callTool(toolName, args);
@@ -77,10 +102,11 @@ export async function* streamWithFallback({ model, messages, temperature, signal
       }
 
       if (shouldCallSearch) {
-        // --- ЛОГИКА ПОИСКА (С БЮДЖЕТОМ) ---
+        // --- ПОИСК С БЮДЖЕТОМ ---
         if (!budget.canUseCloud()) {
           yield { type: 'system_alert', message: '⚠️ Дневной лимит поисковых запросов исчерпан. Отвечаю из своих знаний.' };
           
+          // Второй проход БЕЗ инструментов: модель должна ответить из своих знаний.
           const secondMessages = [
             ...msgs,
             { role: 'assistant', content: null, tool_calls: [toolCallData] },
@@ -113,7 +139,8 @@ export async function* streamWithFallback({ model, messages, temperature, signal
         }
       }
 
-      // --- ВТОРОЙ ПРОХОД (С РЕЗУЛЬТАТОМ ИНСТРУМЕНТА) ---
+      // --- ВТОРОЙ ПРОХОД: отдаём модели результат инструмента ---
+      // ВАЖНО: инструменты отключены (false) — модель не должна зациклиться на новых вызовах.
       const secondMessages = [
         ...msgs,
         { role: 'assistant', content: null, tool_calls: [toolCallData] },
@@ -133,15 +160,16 @@ export async function* streamWithFallback({ model, messages, temperature, signal
     if (hasYieldedContent) return;
   }
 
-  // 1. Пробуем Облако
+  // --- 1. Пробуем облако ---
   if (isCloudAvailable) {
     try {
       yield* runLLM(config.deepseek.baseUrl, config.deepseek.apiKey, mapping.cloud, messages, true);
-      cloudFailures = 0;
+      cloudFailures = 0; // успех — сбрасываем breaker
       return;
     } catch (err) {
       if (err.name === 'AbortError') throw err; 
-      if (err.status === 401 || err.status === 403) throw err;
+      if (err.status === 401 || err.status === 403) throw err; // авторизация — не наша проблема
+
       cloudFailures++;
       if (cloudFailures >= FAILS_TO_OPEN) breakerOpenUntil = Date.now() + 30000;
       
@@ -149,12 +177,13 @@ export async function* streamWithFallback({ model, messages, temperature, signal
     }
   }
 
-  // 2. Локальная модель (Ollama)
+  // --- 2. Локальная модель (Ollama) ---
   yield { type: 'model_info', modelName: mapping.local };
   
   let localMessages = [...messages];
   
   if (forceLocal) {
+    // Бюджет исчерпан: жёстко запрещаем модели упоминать интернет.
     localMessages.unshift({
       role: 'system',
       content: 'КРИТИЧЕСКОЕ ПРАВИЛО: Доступ к интернету ЗАБЛОКИРОВАН (лимит). Отвечай только на основе своих знаний. Если нужны свежие данные (погода), скажи: "Извините, дневной лимит запросов к интернету исчерпан". КАТЕГОРИЧЕСКИ ЗАПРЕЩЕНО писать URL-адреса или названия сайтов.'
@@ -179,7 +208,8 @@ export async function* streamWithFallback({ model, messages, temperature, signal
     });
   }
 
-  // --- ЯДЕРНЫЙ ВАРИАНТ: Проверка на триггерные слова ---
+  // --- ЯДЕРНЫЙ ВАРИАНТ: для Qwen инструменты передаём только если запрос "серьёзный" ---
+  // Причина: локальная модель при виде инструментов пытается вызвать их даже на "привет".
   const lastUserMsg = messages[messages.length - 1];
   const userText = typeof lastUserMsg.content === 'string' ? lastUserMsg.content : '';
   const searchTriggers = /(погод|новост|курс|доллар|евро|сейчас|сегодня|завтра|пробк|авари|трафик|происшеств|что случилось)/i;

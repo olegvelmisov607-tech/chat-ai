@@ -1,11 +1,14 @@
 /**
- * Отправляет запрос к бэкенду и возвращает асинхронный генератор чанков (SSE).
- * 
- * @param {Object} params - Параметры запроса.
- * @param {Array<Object>} params.messagesContext - История сообщений в формате OpenAI.
- * @param {string} params.model - Идентификатор выбранной модели (например, 'qwen', 'vision').
- * @param {number} params.temperature - Температура генерации (креативность) от 0 до 1.
- * @returns {AsyncGenerator<Object, void, unknown>} Асинхронный генератор, возвращающий распарсенные JSON-чанки.
+ * SSE-транспорт чата (fallback, когда WebSocket недоступен).
+ * Возвращает асинхронный генератор распарсенных JSON-чанков.
+ *
+ * @param {Object} params
+ * @param {Array<Object>} params.messagesContext - История сообщений (OpenAI-формат).
+ * @param {string} params.model - Идентификатор модели ('qwen', 'vision', ...).
+ * @param {number} params.temperature - Температура генерации 0..1.
+ * @param {AbortSignal} [params.signal] - Сигнал отмены fetch.
+ * @param {string} params.generationId - UUID генерации (нужен бэкенду для синхронизации).
+ * @returns {AsyncGenerator<Object, void, unknown>}
  */
 export async function* streamChatAPI({ messagesContext, model, temperature, signal, generationId }) {
   const authToken = localStorage.getItem('chat_auth_token') || 'dev-secret-token';
@@ -20,9 +23,9 @@ export async function* streamChatAPI({ messagesContext, model, temperature, sign
       messages: messagesContext, 
       model: model,
       temperature: temperature,
-      generationId: generationId // Передаем на бэкенд
+      generationId
     }),
-    signal // <-- Передаем сигнал для отмены
+    signal // fetch сам прервёт запрос при abort
   });
 
   if (response.status === 401) {
@@ -37,13 +40,14 @@ export async function* streamChatAPI({ messagesContext, model, temperature, sign
   const decoder = new TextDecoder();
   let buffer = '';
 
+  // Парсим SSE-поток: события разделены \n\n, полезная нагрузка — после "data: ".
   while (true) {
     const { done, value } = await reader.read();
     if (done) break;
 
     buffer += decoder.decode(value, { stream: true });
     const lines = buffer.split('\n\n');
-    buffer = lines.pop();
+    buffer = lines.pop(); // последний элемент может быть неполным — оставляем на следующий цикл
 
     for (const line of lines) {
       if (!line.startsWith('data: ')) continue;
@@ -54,12 +58,19 @@ export async function* streamChatAPI({ messagesContext, model, temperature, sign
         const parsed = JSON.parse(jsonStr);
         yield parsed; 
       } catch (err) {
+        // Невалидный чанк (например, разрезанный между пакетами) — пропускаем.
         console.warn('[AI Chat] Ошибка парсинга чанка:', err);
       }
     }
   }
 }
-//умный поиск (генеративный поиск от Yanddex search API)
+
+/**
+ * Стриминг «умного поиска» (генеративный поиск Yandex Search API).
+ * @param {Object} params
+ * @param {string} params.query - Поисковый запрос.
+ * @returns {AsyncGenerator<Object, void, unknown>}
+ */
 export async function* streamSearchAPI({ query }) {
   const authToken = localStorage.getItem('chat_auth_token') || 'dev-secret-token';
 
@@ -100,7 +111,11 @@ export async function* streamSearchAPI({ query }) {
   }
 }
 
-//Бюджет
+/**
+ * Получает статус бюджета облачных запросов.
+ * Возвращает безопасный дефолт при сетевой ошибке, чтобы UI не падал.
+ * @returns {Promise<{used:number, limit:number, remaining:number, allowed:boolean}>}
+ */
 export async function fetchBudgetStatus() {
   try {
     const res = await fetch('/api/budget');
