@@ -1,17 +1,5 @@
 // server/providers/yandex-search.js
-
-/**
- * Yandex Search API отвечает единым JSON — эмулируем SSE для единообразия с LLM-провайдерами.
- * @param {string} text
- */
-async function* emulateStream(text) {
-  if (!text) return;
-  const chunks = text.match(/\S+\s*/g) || [text];
-  for (const chunk of chunks) {
-    yield { type: 'content', text: chunk };
-    await new Promise(r => setTimeout(r, 15)); // скорость печати
-  }
-}
+import { emulateStream } from './utils.js';
 
 /**
  * Генеративный поиск Yandex Search API.
@@ -55,11 +43,11 @@ export async function* streamYandexSearch({ query, folderId, apiKey, signal }) {
   }
 
   // Источники отдаём ПЕРЕД текстом — UI сохранит их и отрисует после стрима.
-  // Берём только те, что модель реально использовала (used: true).
   const usedSources = result.sources?.filter(s => s.used) || [];
   if (usedSources.length > 0) {
     yield { type: 'sources', data: usedSources }; 
   }
 
-  yield* emulateStream(result.message.content);
+  // ✅ Используем общую утилиту с задержкой 15мс
+  yield* emulateStream(result.message.content, 15);
 }

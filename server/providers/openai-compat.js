@@ -1,18 +1,5 @@
 // server/providers/openai-compat.js
-
-/**
- * Эмулирует стриминг для ответов, пришедших единым JSON (stream:false).
- * Разбивает текст на "слова" и отдаёт по одному — чтобы UI печатал плавно.
- * @param {string} text
- */
-async function* emulateStream(text) {
-  if (!text) return;
-  const chunks = text.match(/\S+\s*/g) || [text];
-  for (const chunk of chunks) {
-    yield { type: 'content', text: chunk };
-    await new Promise(r => setTimeout(r, 20)); 
-  }
-}
+import { emulateStream } from './utils.js';
 
 /**
  * Универсальный клиент OpenAI-совместимого API (Ollama, DeepSeek и т.п.).
@@ -90,7 +77,8 @@ export async function* streamOpenAICompat({
     }
 
     if (message.reasoning_content) yield { type: 'reasoning', text: message.reasoning_content };
-    yield* emulateStream(message.content || '');
+    // ✅ Используем общую утилиту с задержкой 20мс
+    yield* emulateStream(message.content || '', 20);
     return;
   }
 

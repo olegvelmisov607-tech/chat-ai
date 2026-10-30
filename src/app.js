@@ -140,13 +140,25 @@ window.addEventListener('DOMContentLoaded', async () => {
   chatController.init();
 
   // 7. Service Worker
-  if ('serviceWorker' in navigator) {
-    if (process.env.NODE_ENV === 'production') {
-      navigator.serviceWorker.register('/sw.js').catch(err => console.error('[SW]', err));
-    } else {
-      navigator.serviceWorker.getRegistrations().then(regs => regs.forEach(r => r.unregister()));
+    if ('serviceWorker' in navigator) {
+      // Проверяем, localhost ли это
+      const isLocalhost = Boolean(
+        window.location.hostname === 'localhost' ||
+        window.location.hostname === '[::1]' ||
+        window.location.hostname.match(/^127(?:\.(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)){3}$/)
+      );
+
+      if (isLocalhost) {
+        // На localhost ВСЕГДА убиваем SW, чтобы не мешал HMR и сборке
+        navigator.serviceWorker.getRegistrations().then(regs => {
+          regs.forEach(r => r.unregister());
+          console.log('[SW] Service Worker отключен на localhost');
+        });
+      } else if (process.env.NODE_ENV === 'production') {
+        // На проде — регистрируем
+        navigator.serviceWorker.register('/sw.js').catch(err => console.error('[SW]', err));
+      }
     }
-  }
 
   updateSendButtonState(elements.input, elements.sendBtn, !!getAttachedImage());
 });
