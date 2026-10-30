@@ -180,12 +180,19 @@ export function initWebSocketServer(httpServer, { generationBus }) {
       console.log(`[WS] Клиент отключен: ${clientId}`);
       
       // Убираем сокет из комнаты пользователя.
-      if (userSockets.has(clientId)) {
-        userSockets.get(clientId).delete(ws);
-        if (userSockets.get(clientId).size === 0) {
-          userSockets.delete(clientId);
-        }
-      }
+     for (const [genId, gen] of activeGenerations.entries()) {
+      if (gen.clientId === clientId) {
+        gen.abortController.abort();
+        activeGenerations.delete(genId);
+        
+        // Сообщаем ВСЕМ сокетам (включая инициатора), что генерация остановлена
+        // (если инициатор еще жив, он сбросит свой баннер)
+        broadcastToUser(clientId, null, { 
+          type: 'generation_stopped', 
+          generationId: genId 
+           });
+         }
+       }
 
       // ⚠️ Если клиент отключился посреди генерации — прерываем ВСЕ его генерации.
       // Это правильно для одного устройства, но при синхронизации между вкладками

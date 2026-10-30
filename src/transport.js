@@ -34,6 +34,10 @@ export async function* streamChat({ messagesContext, model, temperature, generat
 
   let ws;
   let wsOpened = false;
+  
+  // 🛠️ WORKAROUND: Метка времени отправки chat_start.
+  // Нужна, чтобы отсечь "эхо" от наших же старых сокетов.
+  let lastChatStartTime = 0;
 
   try {
     ws = new WebSocket(wsUrl);
@@ -57,6 +61,9 @@ export async function* streamChat({ messagesContext, model, temperature, generat
       };
     });
 
+    // 🛠️ Фиксируем время отправки запроса
+    lastChatStartTime = Date.now();
+    
     ws.send(JSON.stringify({ 
       type: 'chat_start', 
       generationId, 
@@ -77,33 +84,47 @@ export async function* streamChat({ messagesContext, model, temperature, generat
       }
       try {
         const data = JSON.parse(e.data);
+        // 🛑 ВРЕМЕННО ОТКЛЮЧЕНО ДО ПЕРЕХОДА НА FULL-DUPLEX
         
-        // --- СИНХРОНИЗАЦИЯ МЕЖДУ ВКЛАДКАМИ/УСТРОЙСТВАМИ ---
-        // Эти события не являются частью ответа модели — они лишь уведомляют UI.
-        if (data.type === 'generation_started') {
-          window.dispatchEvent(new CustomEvent('sync_generation_started', { detail: data }));
-          return; 
-        }
+        // // --- СИНХРОНИЗАЦИЯ МЕЖДУ ВКЛАДКАМИ/УСТРОЙСТВАМИ ---
+        // // Эти события не являются частью ответа модели — они лишь уведомляют UI.
+        // if (data.type === 'generation_started') {
+        //   // 🛠️ WORKAROUND: Игнорируем событие, если оно пришло в течение 1000мс
+        //   // после того, как мы сами отправили chat_start. Это отсекает эхо
+        //   // от наших собственных (или еще не закрытых) сокетов.
+        //   if (Date.now() - lastChatStartTime < 1000) {
+        //     return; 
+        //   }
+        //   window.dispatchEvent(new CustomEvent('sync_generation_started', { detail: data }));
+        //   return; 
+        // }
         
-        if (data.type === 'generation_stopped') {
-          window.dispatchEvent(new CustomEvent('sync_generation_stopped', { detail: data }));
-          
-          // Если STOP пришёл для НАШЕЙ генерации (нажали на другом устройстве) — обрываем локально.
-          if (data.generationId === generationId && signal && !signal.aborted) {
-            console.log('[Sync] Получен STOP для нашей генерации из другой вкладки');
-            ws.close();
-            done = true;
-            error = new DOMException('Aborted by sync', 'AbortError');
-            return;
-          }
-          return;
-        }
+        // if (data.type === 'generation_stopped') {
+        //    // Если STOP пришёл для НАШЕЙ генерации (нажали на другом устройстве) — обрываем локально.
+        //   if (data.generationId === generationId && signal && !signal.aborted) {
+        //     console.log('[Sync] Получен STOP для нашей генерации из другой вкладки');
+        //     window.dispatchEvent(new CustomEvent('sync_generation_stopped', { detail: data }));
+        //     ws.close();
+        //     done = true;
+        //     error = new DOMException('Aborted by sync', 'AbortError');
+        //     return;
+        //   }
+        //   // Если это событие остановки ДРУГОЙ генерации, просто пробрасываем в UI
+        //   window.dispatchEvent(new CustomEvent('sync_generation_stopped', { detail: data }));
+        //   return;
+        // }
 
         queue.push(data);
       } catch (err) { /* пустой catch: невалидный JSON в WS — просто игнорируем чанк */ }
     };
 
-    ws.onclose = () => { done = true; };
+    ws.onclose = () => { 
+      done = true;
+      // // Если соединение упало, принудительно сбрасываем состояние синхронизации
+      // window.dispatchEvent(new CustomEvent('sync_generation_stopped', { 
+      //   detail: { generationId: null } // null = "сбрось всё"
+      // }));
+    };
     ws.onerror = (e) => { error = e; done = true; };
 
     // Подписка на AbortSignal: при отмене отправляем chat_stop на сервер и закрываем WS.
