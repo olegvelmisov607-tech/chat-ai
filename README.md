@@ -60,13 +60,13 @@
 ## 📸 Скриншоты
 
 ### Десктопный вид (Роутинг между Vision и текстовой моделью)
-![Десктопный вид](docs/desktop.png)
+![Десктопный вид](static/desktop.png)
 
 ### Мобильный вид (Адаптивная верстка)
-<img src="docs/mobile.png" width="300" alt="Мобильный вид">
+<img src="static/mobile.png" width="300" alt="Мобильный вид">
 
 ### Picture-in-Picture (Отдельное окно)
-![Picture-in-Picture](docs/pip.png)
+![Picture-in-Picture](static/pip.png)
 
 ## 🚀 Быстрый старт и Разработка
 
